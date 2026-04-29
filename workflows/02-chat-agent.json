@@ -1,0 +1,404 @@
+{
+  "name": "02 - Chat Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0],
+      "id": "a0000000-0000-0000-0000-000000000001",
+      "name": "When Called by W1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT set_user_context('{{ $json.user_id }}'::uuid)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [220, 0],
+      "id": "a0000000-0000-0000-0000-000000000002",
+      "name": "Set RLS Context",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT role, content FROM conversations ORDER BY created_at DESC LIMIT 20;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [440, -120],
+      "id": "a0000000-0000-0000-0000-000000000003",
+      "name": "Load History",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT name, cadence, target_per_week, description FROM habits WHERE active = TRUE ORDER BY name;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [440, 120],
+      "id": "a0000000-0000-0000-0000-000000000004",
+      "name": "Load Active Habits",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the Anthropic /v1/messages request payload.\n// Inputs available:\n//   $('When Called by W1').first().json  -> { user_id, chat_id, message_text, is_admin }\n//   $('Load History').all()              -> rows of {role, content}, newest first\n//   $('Load Active Habits').all()        -> rows of {name, cadence, target_per_week, description}\n\nconst trigger = $('When Called by W1').first().json;\nconst historyRows = $('Load History').all().map(i => i.json);\nconst habitRows = $('Load Active Habits').all().map(i => i.json);\n\n// Conversation history -> oldest first, only user+assistant rows for now\nconst messages = historyRows\n  .filter(r => r.role === 'user' || r.role === 'assistant')\n  .reverse()\n  .map(r => ({ role: r.role, content: r.content }));\n\n// Append the current user turn\nmessages.push({ role: 'user', content: trigger.message_text });\n\n// Build active habits list for system prompt\nconst habitList = habitRows.length\n  ? habitRows.map(h => `- ${h.name} (${h.cadence}${h.target_per_week ? `, target ${h.target_per_week}/wk` : ''})${h.description ? ' — ' + h.description : ''}`).join('\\n')\n  : '(none yet)';\n\nconst now = new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto' });\n\nconst system = `You are Jarvis, Mark's personal assistant. Be concise and friendly.\n\nCurrent time (Toronto): ${now}\nUser: Mark Freedman\n\nMark's active habits:\n${habitList}\n\nYou have two tools available, but use them sparingly and only when clearly applicable:\n\n- create_habit: ONLY when Mark explicitly says he wants to START tracking a new habit. Trigger phrases: \"I want to start...\", \"add X to my habits\", \"begin tracking Y\". Do NOT auto-create habits from casual mentions.\n\n- log_habit: ONLY when Mark explicitly states he just COMPLETED a habit in the past tense. Trigger phrases: \"I just X'd\", \"finished my Y\", \"logged a Z\", \"did 30 min of W\". Must be a clear past-tense action statement.\n\nDO NOT call log_habit for questions like \"did I X today?\" or \"how many X this week?\" — those are queries, not completions. Just answer the question directly using the conversation history and active habits list.\n\nDO NOT call log_habit for hypothetical/future statements like \"I should X tomorrow\" or \"reminding myself to Y\".\n\nWhen unsure, ask one clarifying question instead of calling a tool. For everything else, just chat naturally.`;\n\nconst tools = [\n  {\n    name: 'create_habit',\n    description: 'Create a new habit Mark wants to track. Use when he says things like \"I want to start meditating daily\" or \"add running 3x a week\".',\n    input_schema: {\n      type: 'object',\n      properties: {\n        name:            { type: 'string',  description: 'Short habit name, lowercase preferred' },\n        description:     { type: 'string',  description: 'Optional longer description' },\n        cadence:         { type: 'string',  enum: ['daily', 'weekly', 'custom'], description: 'How often' },\n        target_per_week: { type: 'integer', description: 'Times per week, 1-7', minimum: 1, maximum: 7 }\n      },\n      required: ['name', 'cadence']\n    }\n  },\n  {\n    name: 'log_habit',\n    description: 'Log that Mark completed an existing habit. Use when he says \"I just meditated\" or \"logged a run\".',\n    input_schema: {\n      type: 'object',\n      properties: {\n        habit_name: { type: 'string', description: 'Name of an existing habit (case-insensitive match)' },\n        note:       { type: 'string', description: 'Optional note about this completion' }\n      },\n      required: ['habit_name']\n    }\n  }\n];\n\nreturn [{\n  json: {\n    body: {\n      model:      'claude-sonnet-4-5-20250929',\n      max_tokens: 1024,\n      system,\n      tools,\n      messages\n    },\n    // Carry through for downstream nodes\n    user_id:      trigger.user_id,\n    chat_id:      trigger.chat_id,\n    message_text: trigger.message_text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "id": "a0000000-0000-0000-0000-000000000005",
+      "name": "Build Claude Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type",      "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "id": "a0000000-0000-0000-0000-000000000006",
+      "name": "Call Claude #1",
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_WITH_YOUR_ANTHROPIC_CRED_ID",
+          "name": "ANTHROPIC_API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Inspect Claude response. Decide: text-only or tool_use?\nconst resp = $json;\nconst trigger = $('Build Claude Request').first().json;\n\nconst stopReason = resp.stop_reason;\nconst contentBlocks = resp.content || [];\n\nconst textBlock = contentBlocks.find(b => b.type === 'text');\nconst toolUseBlock = contentBlocks.find(b => b.type === 'tool_use');\n\nreturn [{\n  json: {\n    stop_reason:    stopReason,\n    has_tool_use:   !!toolUseBlock,\n    tool_use_id:    toolUseBlock ? toolUseBlock.id : null,\n    tool_name:      toolUseBlock ? toolUseBlock.name : null,\n    tool_input:     toolUseBlock ? toolUseBlock.input : null,\n    text:           textBlock ? textBlock.text : '',\n    raw_assistant_msg: { role: 'assistant', content: contentBlocks },\n    user_id:        trigger.user_id,\n    chat_id:        trigger.chat_id,\n    message_text:   trigger.message_text,\n    original_messages: trigger.body.messages\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 0],
+      "id": "a0000000-0000-0000-0000-000000000007",
+      "name": "Parse Claude Response"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "branch-tool",
+              "leftValue": "={{ $json.has_tool_use }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1320, 0],
+      "id": "a0000000-0000-0000-0000-000000000008",
+      "name": "Tool Use?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "tool-create",
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "create_habit",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_habit"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "tool-log",
+                    "leftValue": "={{ $json.tool_name }}",
+                    "rightValue": "log_habit",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "log_habit"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [1540, -100],
+      "id": "a0000000-0000-0000-0000-000000000009",
+      "name": "Dispatch Tool"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO habits (user_id, name, description, cadence, target_per_week)\nVALUES (\n  current_user_id(),\n  '{{ $json.tool_input.name }}',\n  {{ $json.tool_input.description ? \"'\" + $json.tool_input.description.replace(/'/g, \"''\") + \"'\" : 'NULL' }},\n  '{{ $json.tool_input.cadence }}',\n  {{ $json.tool_input.target_per_week || 7 }}\n)\nRETURNING id, name, cadence, target_per_week;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1760, -200],
+      "id": "a0000000-0000-0000-0000-00000000000a",
+      "name": "Tool: create_habit",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH matched AS (\n  SELECT id, name FROM habits\n  WHERE active = TRUE AND LOWER(name) = LOWER('{{ $json.tool_input.habit_name }}')\n  LIMIT 1\n),\ninserted AS (\n  INSERT INTO habit_logs (user_id, habit_id, note, source)\n  SELECT current_user_id(), m.id, {{ $json.tool_input.note ? \"'\" + $json.tool_input.note.replace(/'/g, \"''\") + \"'\" : 'NULL' }}, 'telegram'\n  FROM matched m\n  RETURNING id, habit_id, completed_at\n)\nSELECT m.name, i.completed_at,\n       (SELECT COUNT(*)::int FROM habit_logs WHERE habit_id = m.id) AS total_logs\nFROM matched m LEFT JOIN inserted i ON TRUE;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1760, 0],
+      "id": "a0000000-0000-0000-0000-00000000000b",
+      "name": "Tool: log_habit",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine the tool result with the original conversation, then build the second Claude call payload.\nconst toolRow = $json; // from create_habit OR log_habit insert\nconst parsed = $('Parse Claude Response').first().json;\nconst originalReq = $('Build Claude Request').first().json;\n\n// Format the tool_result content for Claude.\n// For create_habit success row has: id, name, cadence, target_per_week\n// For log_habit success row has: name, completed_at, total_logs (or empty if no match)\nlet toolResultText;\nlet isError = false;\nif (parsed.tool_name === 'create_habit') {\n  if (toolRow && toolRow.id) {\n    toolResultText = `Created habit \"${toolRow.name}\" (${toolRow.cadence}, target ${toolRow.target_per_week}/wk).`;\n  } else {\n    toolResultText = 'Failed to create habit.';\n    isError = true;\n  }\n} else if (parsed.tool_name === 'log_habit') {\n  if (toolRow && toolRow.completed_at) {\n    toolResultText = `Logged \"${toolRow.name}\" at ${toolRow.completed_at}. Total completions: ${toolRow.total_logs}.`;\n  } else if (toolRow && toolRow.name) {\n    toolResultText = `Found habit \"${toolRow.name}\" but log insert failed.`;\n    isError = true;\n  } else {\n    toolResultText = `No active habit named \"${parsed.tool_input.habit_name}\". Suggest creating one first.`;\n    isError = true;\n  }\n}\n\n// Build the next messages array: original + assistant's tool_use turn + user tool_result turn\nconst nextMessages = [\n  ...parsed.original_messages,\n  parsed.raw_assistant_msg,\n  {\n    role: 'user',\n    content: [\n      {\n        type: 'tool_result',\n        tool_use_id: parsed.tool_use_id,\n        content: toolResultText,\n        is_error: isError\n      }\n    ]\n  }\n];\n\nreturn [{\n  json: {\n    body: {\n      model:      originalReq.body.model,\n      max_tokens: originalReq.body.max_tokens,\n      system:     originalReq.body.system,\n      tools:      originalReq.body.tools,\n      messages:   nextMessages\n    },\n    user_id:      parsed.user_id,\n    chat_id:      parsed.chat_id,\n    message_text: parsed.message_text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, -100],
+      "id": "a0000000-0000-0000-0000-00000000000c",
+      "name": "Build Tool Result Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type",      "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, -100],
+      "id": "a0000000-0000-0000-0000-00000000000d",
+      "name": "Call Claude #2",
+      "credentials": {
+        "anthropicApi": {
+          "id": "REPLACE_WITH_YOUR_ANTHROPIC_CRED_ID",
+          "name": "ANTHROPIC_API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract final assistant text from the second Claude call.\nconst resp = $json;\nconst trigger = $('Build Tool Result Request').first().json;\nconst textBlock = (resp.content || []).find(b => b.type === 'text');\nreturn [{\n  json: {\n    final_text: textBlock ? textBlock.text : '(no reply)',\n    user_id:    trigger.user_id,\n    chat_id:    trigger.chat_id,\n    message_text: trigger.message_text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, -100],
+      "id": "a0000000-0000-0000-0000-00000000000e",
+      "name": "Extract Final Text (post-tool)"
+    },
+    {
+      "parameters": {
+        "jsCode": "// end_turn branch — already have text from Parse Claude Response.\nconst parsed = $json;\nreturn [{\n  json: {\n    final_text:   parsed.text || '(no reply)',\n    user_id:      parsed.user_id,\n    chat_id:      parsed.chat_id,\n    message_text: parsed.message_text\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 200],
+      "id": "a0000000-0000-0000-0000-00000000000f",
+      "name": "Extract Final Text (no-tool)"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 2
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [2540, 0],
+      "id": "a0000000-0000-0000-0000-000000000020",
+      "name": "Merge Branches"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (\n  INSERT INTO conversations (user_id, role, content) VALUES\n    (current_user_id(), 'user',      $conv${{ $json.message_text }}$conv$),\n    (current_user_id(), 'assistant', $conv${{ $json.final_text }}$conv$)\n  RETURNING id, role, content\n)\nSELECT\n  (SELECT content FROM ins WHERE role = 'assistant') AS final_text,\n  (SELECT array_agg(id) FROM ins)                    AS conversation_ids,\n  {{ $('When Called by W1').first().json.chat_id }}::bigint AS chat_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2740, 0],
+      "id": "a0000000-0000-0000-0000-000000000010",
+      "name": "Save Conversation",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.final_text }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2860, 0],
+      "id": "a0000000-0000-0000-0000-000000000011",
+      "name": "Send Telegram Reply",
+      "webhookId": "a0000000-aaaa-aaaa-aaaa-000000000011",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Called by W1": {
+      "main": [[{ "node": "Set RLS Context", "type": "main", "index": 0 }]]
+    },
+    "Set RLS Context": {
+      "main": [[{ "node": "Load History", "type": "main", "index": 0 }]]
+    },
+    "Load History": {
+      "main": [[{ "node": "Load Active Habits", "type": "main", "index": 0 }]]
+    },
+    "Load Active Habits": {
+      "main": [[{ "node": "Build Claude Request", "type": "main", "index": 0 }]]
+    },
+    "Build Claude Request": {
+      "main": [[{ "node": "Call Claude #1", "type": "main", "index": 0 }]]
+    },
+    "Call Claude #1": {
+      "main": [[{ "node": "Parse Claude Response", "type": "main", "index": 0 }]]
+    },
+    "Parse Claude Response": {
+      "main": [[{ "node": "Tool Use?", "type": "main", "index": 0 }]]
+    },
+    "Tool Use?": {
+      "main": [
+        [{ "node": "Dispatch Tool", "type": "main", "index": 0 }],
+        [{ "node": "Extract Final Text (no-tool)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Dispatch Tool": {
+      "main": [
+        [{ "node": "Tool: create_habit", "type": "main", "index": 0 }],
+        [{ "node": "Tool: log_habit",    "type": "main", "index": 0 }]
+      ]
+    },
+    "Tool: create_habit": {
+      "main": [[{ "node": "Build Tool Result Request", "type": "main", "index": 0 }]]
+    },
+    "Tool: log_habit": {
+      "main": [[{ "node": "Build Tool Result Request", "type": "main", "index": 0 }]]
+    },
+    "Build Tool Result Request": {
+      "main": [[{ "node": "Call Claude #2", "type": "main", "index": 0 }]]
+    },
+    "Call Claude #2": {
+      "main": [[{ "node": "Extract Final Text (post-tool)", "type": "main", "index": 0 }]]
+    },
+    "Extract Final Text (post-tool)": {
+      "main": [[{ "node": "Merge Branches", "type": "main", "index": 0 }]]
+    },
+    "Extract Final Text (no-tool)": {
+      "main": [[{ "node": "Merge Branches", "type": "main", "index": 1 }]]
+    },
+    "Merge Branches": {
+      "main": [[{ "node": "Save Conversation", "type": "main", "index": 0 }]]
+    },
+    "Save Conversation": {
+      "main": [[{ "node": "Send Telegram Reply", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "phase1-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "de1472e1fab071aa80971c21b72fe39da906763fad6f8d61403e262b4b85c3b6"
+  },
+  "tags": []
+}

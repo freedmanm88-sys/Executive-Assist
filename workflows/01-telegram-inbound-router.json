@@ -1,0 +1,385 @@
+{
+  "name": "01 - Telegram Inbound Router",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "id": "020338c3-4f4f-41d6-a0e9-33c5aa8afb55",
+      "name": "Telegram Trigger",
+      "webhookId": "1154f1a4-dcb8-4759-9370-66e25fe470ce",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, is_admin, plan FROM users WHERE telegram_chat_id = {{ $json.message.chat.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [208, 0],
+      "id": "0781f04e-ea44-4575-bad8-f594cbebccd5",
+      "name": "Lookup User",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT set_user_context('{{ $('Lookup User').item.json.id }}'::uuid)",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [400, 0],
+      "id": "ae84a775-7c74-429f-882f-d1f68df64e2c",
+      "name": "Set RLS Context",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "7656bbf2-2666-41c7-b29e-7e3dbdf023e9",
+                    "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+                    "rightValue": "/today",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Today"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "286dc1f2-bdb8-4574-8f44-0f3afc419cd1",
+                    "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+                    "rightValue": "/urgent",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Urgent"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "bb7e0aba-952a-4ed0-b801-c025aacf4ff0",
+                    "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+                    "rightValue": "/rules",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Rules"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "6d0b97d3-86eb-4158-8f70-68ebde8afc76",
+                    "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+                    "rightValue": "/admin",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Admin"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "86aca6bb-6fb9-4fc6-aab0-fb8256956321",
+                    "leftValue": "={{ $('Telegram Trigger').item.json.message.text }}",
+                    "rightValue": "/help",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Help"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Chat"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [592, 0],
+      "id": "221ef8dc-0f5f-4c50-8b09-1c1a856424ef",
+      "name": "Command Lookup"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "94c4a3da-ab41-4b91-b9e8-e8965da1a8d5",
+              "leftValue": "={{ $('Lookup User').item.json.is_admin }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [820, 240],
+      "id": "9ecfbb5d-dc9e-4a80-999e-0faf4ad64e9c",
+      "name": "Is Admin User?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 'Available commands:' || E'\\n\\n' || string_agg(command || ' – ' || description, E'\\n' ORDER BY display_order, command) || E'\\n\\nOr just chat normally.' AS text\nFROM bot_commands\nWHERE enabled = TRUE\n  AND (admin_only = FALSE OR {{ $('Lookup User').item.json.is_admin }} = TRUE);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [820, 384],
+      "id": "f2d1c8a1-9b3e-4a52-91d7-11aabbccddee",
+      "name": "Build Help Text",
+      "credentials": {
+        "postgres": {
+          "id": "4GL0UUth7Vx2LhMC",
+          "name": "Postgres - Executive Assistant"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1040, 384],
+      "id": "7fede185-f7b9-48cd-a865-3f248bddd34a",
+      "name": "Help Reply",
+      "webhookId": "66681d64-beee-43fa-b38a-653d00216a0f",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "/today not built yet — Workflow 5 (Daily Digest) is on the roadmap.",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, -240],
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Today Placeholder",
+      "webhookId": "11111111-aaaa-aaaa-aaaa-111111111111",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "/urgent not built yet — Workflow 6 (Urgent Nag Loop) is on the roadmap.",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, -120],
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Urgent Placeholder",
+      "webhookId": "22222222-aaaa-aaaa-aaaa-222222222222",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "/rules not built yet — triage rules inspector is on the roadmap.",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [820, 0],
+      "id": "33333333-3333-3333-3333-333333333333",
+      "name": "Rules Placeholder",
+      "webhookId": "33333333-aaaa-aaaa-aaaa-333333333333",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "/admin not built yet — Workflow 8 (Admin Dashboard) is on the roadmap.",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1040, 180],
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "Admin Placeholder",
+      "webhookId": "44444444-aaaa-aaaa-aaaa-444444444444",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "Sorry, /admin is restricted.",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1040, 300],
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "Not Authorized",
+      "webhookId": "55555555-aaaa-aaaa-aaaa-555555555555",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    user_id:      $('Lookup User').item.json.id,\n    chat_id:      $('Telegram Trigger').item.json.message.chat.id,\n    message_text: $('Telegram Trigger').item.json.message.text,\n    is_admin:     $('Lookup User').item.json.is_admin\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 540],
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": "Prepare Chat Agent Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "REPLACE_WITH_W2_WORKFLOW_ID",
+          "cachedResultName": "02 - Chat Agent"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1040, 540],
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "Call Chat Agent"
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Lookup User", "type": "main", "index": 0 }]]
+    },
+    "Lookup User": {
+      "main": [[{ "node": "Set RLS Context", "type": "main", "index": 0 }]]
+    },
+    "Set RLS Context": {
+      "main": [[{ "node": "Command Lookup", "type": "main", "index": 0 }]]
+    },
+    "Command Lookup": {
+      "main": [
+        [{ "node": "Today Placeholder",  "type": "main", "index": 0 }],
+        [{ "node": "Urgent Placeholder", "type": "main", "index": 0 }],
+        [{ "node": "Rules Placeholder",  "type": "main", "index": 0 }],
+        [{ "node": "Is Admin User?",     "type": "main", "index": 0 }],
+        [{ "node": "Build Help Text",    "type": "main", "index": 0 }],
+        [{ "node": "Prepare Chat Agent Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Chat Agent Input": {
+      "main": [[{ "node": "Call Chat Agent", "type": "main", "index": 0 }]]
+    },
+    "Is Admin User?": {
+      "main": [
+        [{ "node": "Admin Placeholder", "type": "main", "index": 0 }],
+        [{ "node": "Not Authorized",    "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Help Text": {
+      "main": [[{ "node": "Help Reply", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "phase1-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "de1472e1fab071aa80971c21b72fe39da906763fad6f8d61403e262b4b85c3b6"
+  },
+  "id": "GAJcCdnFETboKXEg",
+  "tags": []
+}

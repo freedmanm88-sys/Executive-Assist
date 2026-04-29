@@ -1,0 +1,63 @@
+{
+  "name": "99 - Error Alerter",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "name": "When Any Workflow Errors"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format the error payload n8n hands to error workflows.\nconst data = $json;\nconst wf  = data.workflow  || {};\nconst ex  = data.execution || {};\nconst err = ex.error       || {};\n\n// Markdown-escape user-supplied strings so * _ ` [ ] don't break formatting\nconst esc = (s) => String(s ?? '').replace(/[*_`\\[\\]]/g, m => '\\\\' + m);\n\nconst lines = [\n  '🚨 *Workflow Failure*',\n  '',\n  `*Workflow:* ${esc(wf.name || 'unknown')}`,\n  `*Failed at:* ${esc(ex.lastNodeExecuted || '(unknown node)')}`,\n  `*Error:* ${esc(err.message || 'no message')}`\n];\n\nif (err.description) {\n  lines.push(`*Detail:* ${esc(err.description)}`);\n}\n\nif (ex.url) {\n  lines.push('', `[View execution](${ex.url})`);\n}\n\nconst text = lines.join('\\n');\n\nreturn [{\n  json: {\n    text,\n    workflow_name: wf.name || 'unknown',\n    workflow_id:   wf.id   || null,\n    execution_id:  ex.id   || null,\n    failed_node:   ex.lastNodeExecuted || null,\n    error_message: err.message || null\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "id": "e0000000-0000-0000-0000-000000000002",
+      "name": "Format Error Message"
+    },
+    {
+      "parameters": {
+        "chatId": "8572693842",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [440, 0],
+      "id": "e0000000-0000-0000-0000-000000000003",
+      "name": "Alert Mark on Telegram",
+      "webhookId": "e0000000-aaaa-aaaa-aaaa-000000000003",
+      "credentials": {
+        "telegramApi": {
+          "id": "5OBH03yqBZkCK8vF",
+          "name": "jarvis_mork_bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Any Workflow Errors": {
+      "main": [[{ "node": "Format Error Message", "type": "main", "index": 0 }]]
+    },
+    "Format Error Message": {
+      "main": [[{ "node": "Alert Mark on Telegram", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "phase1-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "de1472e1fab071aa80971c21b72fe39da906763fad6f8d61403e262b4b85c3b6"
+  },
+  "tags": []
+}

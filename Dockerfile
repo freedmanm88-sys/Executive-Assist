@@ -15,5 +15,11 @@ FROM n8nio/n8n:latest
 
 USER root
 
+# Use WebSocket for editor push channel instead of SSE long-polling.
+# Without this, the editor flaps between "connected" and "lost connection"
+# every 2s in sync with the SSE poll cycle. WebSocket gives a single
+# persistent connection that doesn't trip the indicator.
+ENV N8N_PUSH_BACKEND=websocket
+
 # n8n image already has the right ENTRYPOINT/CMD; just inheriting them
 # but as root user resolves the volume permission issue.

@@ -134,8 +134,19 @@ function parseHeaders(message: GmailEvent['message']): ParsedHeaders {
     message.From ?? map['from'] ?? '(unknown)';
   const subject =
     message.Subject ?? map['subject'] ?? '(no subject)';
-  const receivedAt =
-    message.Date ?? map['date'] ?? message.internalDate ?? new Date().toISOString();
+  // Date precedence: explicit Date header → header map → internalDate (epoch ms) → now
+  let receivedAt: string;
+  if (message.Date) {
+    receivedAt = message.Date;
+  } else if (map['date']) {
+    receivedAt = map['date'];
+  } else if (message.internalDate) {
+    // Gmail's internalDate is epoch milliseconds as a string. Convert to ISO.
+    const ms = parseInt(message.internalDate, 10);
+    receivedAt = Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
+  } else {
+    receivedAt = new Date().toISOString();
+  }
 
   let senderName  = '';
   let senderEmail = fromHeader;

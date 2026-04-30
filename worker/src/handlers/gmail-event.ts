@@ -50,6 +50,14 @@ const GmailMessageSchema = z.object({
       parts:    z.array(PayloadPartSchema).optional(),
     })
     .optional(),
+  // n8n's Gmail Trigger flattens these to top-level when Simplify=true (default).
+  // Capture them so we don't depend on payload.headers / payload.parts being present.
+  From:    z.string().optional(),
+  To:      z.string().optional(),
+  Subject: z.string().optional(),
+  Date:    z.string().optional(),
+  text:    z.string().optional(),
+  html:    z.string().optional(),
 });
 
 const GmailEventSchema = z.object({
@@ -65,8 +73,15 @@ function decodeBase64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
 
-function extractBody(payload: GmailEvent['message']['payload']): string {
-  if (!payload) return '';
+function extractBody(message: GmailEvent['message']): string {
+  // Prefer n8n's flattened text (Simplify=true). Fall back to html stripped, then to raw payload walk.
+  if (message.text && message.text.trim()) return message.text.trim();
+  if (message.html && message.html.trim()) {
+    return message.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  const payload = message.payload;
+  if (!payload) return message.snippet ?? '';
 
   // Top-level body
   if (payload.body?.data) {
@@ -96,7 +111,7 @@ function extractBody(payload: GmailEvent['message']['payload']): string {
     return '';
   }
 
-  return walk(payload.parts);
+  return walk(payload.parts) || message.snippet || '';
 }
 
 // ---------- Header parsing ---------------------------------------------------
@@ -109,11 +124,19 @@ interface ParsedHeaders {
   receivedAt:  string;
 }
 
-function parseHeaders(payload: GmailEvent['message']['payload']): ParsedHeaders {
+function parseHeaders(message: GmailEvent['message']): ParsedHeaders {
+  // Build a header map from payload.headers (raw Gmail API shape, when Simplify=false)
   const map: Record<string, string> = {};
-  for (const h of payload?.headers ?? []) map[h.name.toLowerCase()] = h.value;
+  for (const h of message.payload?.headers ?? []) map[h.name.toLowerCase()] = h.value;
 
-  const fromHeader = map['from'] ?? '(unknown)';
+  // Prefer n8n's flattened top-level fields (Simplify=true), fall back to header map
+  const fromHeader =
+    message.From ?? map['from'] ?? '(unknown)';
+  const subject =
+    message.Subject ?? map['subject'] ?? '(no subject)';
+  const receivedAt =
+    message.Date ?? map['date'] ?? message.internalDate ?? new Date().toISOString();
+
   let senderName  = '';
   let senderEmail = fromHeader;
   const m = fromHeader.match(/^(.*?)\s*<([^>]+)>\s*$/);
@@ -122,13 +145,7 @@ function parseHeaders(payload: GmailEvent['message']['payload']): ParsedHeaders 
     senderEmail = (m[2] ?? '').trim();
   }
 
-  return {
-    subject:     map['subject']  ?? '(no subject)',
-    fromHeader,
-    senderName,
-    senderEmail,
-    receivedAt:  map['date']     ?? new Date().toISOString(),
-  };
+  return { subject, fromHeader, senderName, senderEmail, receivedAt };
 }
 
 // ---------- DB helpers -------------------------------------------------------
@@ -291,8 +308,8 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
     return;
   }
 
-  const headers = parseHeaders(message.payload);
-  const body    = extractBody(message.payload).slice(0, 4000); // keep token cost bounded
+  const headers = parseHeaders(message);
+  const body    = extractBody(message).slice(0, 4000); // keep token cost bounded
 
   const classification = await classifyEmail({
     subject:      headers.subject,

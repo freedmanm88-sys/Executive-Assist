@@ -2,312 +2,54 @@
   "name": "03a - Email Triage (Personal)",
   "nodes": [
     {
-      "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
-      "position": [0, 0],
-      "id": "f0000000-0000-0000-0000-000000000001",
-      "name": "When Run Manually"
-    },
-    {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT id, user_id, label, address, last_history_id\nFROM gmail_accounts\nWHERE label = 'personal' AND active = TRUE\nLIMIT 1;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [220, 0],
-      "id": "f0000000-0000-0000-0000-000000000002",
-      "name": "Get Gmail Account",
-      "credentials": {
-        "postgres": {
-          "id": "4GL0UUth7Vx2LhMC",
-          "name": "Postgres - Executive Assistant"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT set_user_context('{{ $json.user_id }}'::uuid)",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [440, 0],
-      "id": "f0000000-0000-0000-0000-000000000003",
-      "name": "Set RLS Context",
-      "credentials": {
-        "postgres": {
-          "id": "4GL0UUth7Vx2LhMC",
-          "name": "Postgres - Executive Assistant"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "message",
-        "operation": "getAll",
-        "returnAll": false,
-        "limit": 20,
+        "event": "messageReceived",
         "filters": {
-          "q": "in:inbox newer_than:1d"
+          "labelIds": ["INBOX"]
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [660, 0],
-      "id": "f0000000-0000-0000-0000-000000000004",
-      "name": "List Recent Messages",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "id": "f1000000-0000-0000-0000-000000000001",
+      "name": "New Email (Personal)",
       "credentials": {
         "gmailOAuth2": {
           "id": "REPLACE_WITH_FREEDMAN_M88_CRED_ID",
           "name": "Freedman.m88"
         }
       }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT set_user_context('{{ $('Get Gmail Account').item.json.user_id }}'::uuid);\nSELECT\n  '{{ $json.id }}'::text       AS gmail_message_id,\n  '{{ $json.threadId }}'::text AS gmail_thread_id,\n  COUNT(*)::int                 AS already_triaged\nFROM email_triage_log\nWHERE gmail_message_id = '{{ $json.id }}';",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [880, 0],
-      "id": "f0000000-0000-0000-0000-000000000005",
-      "name": "Check Already Triaged",
-      "alwaysOutputData": true,
-      "credentials": {
-        "postgres": {
-          "id": "4GL0UUth7Vx2LhMC",
-          "name": "Postgres - Executive Assistant"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
-          "conditions": [
-            {
-              "id": "not-triaged",
-              "leftValue": "={{ $json.already_triaged }}",
-              "rightValue": 0,
-              "operator": { "type": "number", "operation": "equals" }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [1100, 0],
-      "id": "f0000000-0000-0000-0000-000000000006",
-      "name": "Is New?"
-    },
-    {
-      "parameters": {
-        "resource": "message",
-        "operation": "get",
-        "messageId": "={{ $json.gmail_message_id }}",
-        "options": {
-          "format": "full"
-        }
-      },
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [1320, 100],
-      "id": "f0000000-0000-0000-0000-000000000007",
-      "name": "Get Message Details",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "REPLACE_WITH_FREEDMAN_M88_CRED_ID",
-          "name": "Freedman.m88"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Build the Anthropic /v1/messages request payload for email classification.\n// Forces a single tool_use call so Claude returns structured output.\n\nconst msg = $json;\n\n// Pull headers into a flat map\nconst headers = {};\n(msg.payload?.headers || []).forEach(h => { headers[h.name.toLowerCase()] = h.value; });\n\nconst subject  = headers['subject']  || '(no subject)';\nconst fromHdr  = headers['from']     || '(unknown)';\nconst received = headers['date']     || new Date().toISOString();\n\n// Parse \"Name <email@x.com>\" into name + email\nlet senderName  = '';\nlet senderEmail = fromHdr;\nconst m = fromHdr.match(/^(.*?)\\s*<([^>]+)>\\s*$/);\nif (m) { senderName = m[1].replace(/\"/g, '').trim(); senderEmail = m[2].trim(); }\n\n// Walk the payload to extract a text body. Prefer text/plain, fall back to text/html stripped.\nfunction findBody(payload) {\n  if (!payload) return '';\n  if (payload.body?.data) {\n    try { return Buffer.from(payload.body.data, 'base64').toString('utf-8'); } catch { return ''; }\n  }\n  if (payload.parts) {\n    // Prefer text/plain\n    const plain = payload.parts.find(p => p.mimeType === 'text/plain');\n    if (plain) return findBody(plain);\n    // Fall back to text/html\n    const html = payload.parts.find(p => p.mimeType === 'text/html');\n    if (html) return findBody(html).replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n    // Recurse\n    for (const p of payload.parts) {\n      const got = findBody(p);\n      if (got) return got;\n    }\n  }\n  return '';\n}\n\nlet body = findBody(msg.payload).trim();\n// Truncate to keep token costs sane — full body is in DB if we ever need it\nconst maxBody = 4000;\nif (body.length > maxBody) body = body.slice(0, maxBody) + '\\n\\n[truncated]';\n\nconst userMessage = `Email to triage:\\n\\nFROM: ${fromHdr}\\nSUBJECT: ${subject}\\nRECEIVED: ${received}\\n\\nBODY:\\n${body || '(empty)'}`;\n\nconst system = `You triage Mark's personal inbox. He's in Toronto, runs Sophax Consulting and Stonefield Mortgage. This is his PERSONAL Gmail (freedman.m88@gmail.com).\n\nClassify each email and recommend an action. Be aggressive about archiving newsletters, receipts, and notifications. Be careful with anything from real humans — when in doubt, classify as 'fyi' rather than 'spam'.\n\nUse the classify_email tool. Always.`;\n\nconst tools = [{\n  name: 'classify_email',\n  description: 'Classify the email and recommend an action.',\n  input_schema: {\n    type: 'object',\n    properties: {\n      classification: {\n        type: 'string',\n        enum: ['urgent','action','reply_needed','fyi','newsletter','receipt','calendar','spam'],\n        description: 'Primary category. urgent=needs action <24h. action=needs action this week. reply_needed=human waiting for reply. fyi=informational, no action. newsletter=marketing/digest. receipt=transactional. calendar=invite/booking. spam=junk.'\n      },\n      urgency_score:    { type: 'integer', minimum: 0, maximum: 100, description: '0=ignore, 100=interrupt-now-urgent' },\n      reasoning:        { type: 'string', description: 'One sentence explaining the classification' },\n      suggested_action: {\n        type: 'string',\n        enum: ['none','archive','label_only','reply','flag_for_review'],\n        description: 'What to do. archive for newsletters/receipts/spam. flag_for_review when uncertain. reply when human-to-human action needed.'\n      }\n    },\n    required: ['classification','urgency_score','reasoning','suggested_action']\n  }\n}];\n\nreturn [{\n  json: {\n    body: {\n      model:       'claude-sonnet-4-5-20250929',\n      max_tokens:  512,\n      system,\n      tools,\n      tool_choice: { type: 'tool', name: 'classify_email' },\n      messages:    [{ role: 'user', content: userMessage }]\n    },\n    // Carry through for downstream nodes\n    gmail_message_id: msg.id,\n    gmail_thread_id:  msg.threadId,\n    subject,\n    sender_email:     senderEmail,\n    sender_name:      senderName,\n    received_at:      received,\n    snippet:          msg.snippet || '',\n    gmail_account_id: $('Get Gmail Account').first().json.id\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1540, 100],
-      "id": "f0000000-0000-0000-0000-000000000008",
-      "name": "Build Classify Request"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
+        "url": "https://worker-production-5e83.up.railway.app/events/gmail",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "anthropicApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "content-type",      "value": "application/json" }
-          ]
-        },
+        "nodeCredentialType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({ gmail_account_label: 'personal', message: $json }) }}",
+        "options": {
+          "timeout": 60000
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1760, 100],
-      "id": "f0000000-0000-0000-0000-000000000009",
-      "name": "Call Claude (Classify)",
+      "position": [240, 0],
+      "id": "f1000000-0000-0000-0000-000000000002",
+      "name": "POST → Worker /events/gmail",
       "credentials": {
-        "anthropicApi": {
-          "id": "REPLACE_WITH_YOUR_ANTHROPIC_CRED_ID",
-          "name": "ANTHROPIC_API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Extract the classify_email tool_use block from Claude's response.\nconst resp = $json;\nconst trigger = $('Build Classify Request').first().json;\n\nconst toolUse = (resp.content || []).find(b => b.type === 'tool_use' && b.name === 'classify_email');\nif (!toolUse) {\n  throw new Error('Claude did not return a classify_email tool_use block');\n}\n\nconst out = toolUse.input;\n\nreturn [{\n  json: {\n    classification:    out.classification,\n    urgency_score:     out.urgency_score,\n    reasoning:         out.reasoning,\n    suggested_action:  out.suggested_action,\n    is_urgent:         out.classification === 'urgent' || out.urgency_score >= 80,\n    would_archive:     ['newsletter','receipt','spam'].includes(out.classification),\n    // Pass through email metadata\n    gmail_message_id:  trigger.gmail_message_id,\n    gmail_thread_id:   trigger.gmail_thread_id,\n    subject:           trigger.subject,\n    sender_email:      trigger.sender_email,\n    sender_name:       trigger.sender_name,\n    received_at:       trigger.received_at,\n    snippet:           trigger.snippet,\n    gmail_account_id:  trigger.gmail_account_id,\n    model:             trigger.body.model\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1980, 100],
-      "id": "f0000000-0000-0000-0000-00000000000a",
-      "name": "Parse Classification"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT set_user_context('{{ $('Get Gmail Account').item.json.user_id }}'::uuid);\nWITH dec AS (\n  INSERT INTO ai_decisions (\n    user_id, domain, decision, reasoning, inputs, model, prompt_version, related_table\n  ) VALUES (\n    current_user_id(),\n    'email_triage',\n    jsonb_build_object(\n      'classification',   $conv${{ $json.classification }}$conv$,\n      'urgency_score',    {{ $json.urgency_score }},\n      'suggested_action', $conv${{ $json.suggested_action }}$conv$\n    ),\n    $conv${{ $json.reasoning }}$conv$,\n    jsonb_build_object(\n      'gmail_message_id', $conv${{ $json.gmail_message_id }}$conv$,\n      'sender_email',     $conv${{ $json.sender_email }}$conv$,\n      'subject',          $conv${{ $json.subject }}$conv$\n    ),\n    $conv${{ $json.model }}$conv$,\n    'phase1-v1',\n    'email_triage_log'\n  )\n  RETURNING id\n)\nINSERT INTO email_triage_log (\n  user_id, gmail_account_id, gmail_message_id, gmail_thread_id,\n  subject, sender_email, sender_name, received_at,\n  classification, reasoning, would_archive, archived, decision_id\n)\nSELECT\n  current_user_id(),\n  $conv${{ $json.gmail_account_id }}$conv$::uuid,\n  $conv${{ $json.gmail_message_id }}$conv$,\n  $conv${{ $json.gmail_thread_id }}$conv$,\n  $conv${{ $json.subject }}$conv$,\n  $conv${{ $json.sender_email }}$conv$,\n  $conv${{ $json.sender_name }}$conv$,\n  $conv${{ $json.received_at }}$conv$::timestamptz,\n  $conv${{ $json.classification }}$conv$,\n  $conv${{ $json.reasoning }}$conv$,\n  {{ $json.would_archive }},\n  FALSE,\n  d.id\nFROM dec d\nON CONFLICT (user_id, gmail_message_id) DO NOTHING\nRETURNING id, classification, decision_id;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [2200, 100],
-      "id": "f0000000-0000-0000-0000-00000000000b",
-      "name": "Save Triage Result",
-      "alwaysOutputData": true,
-      "credentials": {
-        "postgres": {
-          "id": "4GL0UUth7Vx2LhMC",
-          "name": "Postgres - Executive Assistant"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
-          "conditions": [
-            {
-              "id": "is-urgent",
-              "leftValue": "={{ $('Parse Classification').item.json.is_urgent }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [2420, 100],
-      "id": "f0000000-0000-0000-0000-00000000000c",
-      "name": "Is Urgent?"
-    },
-    {
-      "parameters": {
-        "chatId": "8572693842",
-        "text": "={{ '🚨 *Urgent email* (' + $('Parse Classification').item.json.urgency_score + '/100)\\n\\n*From:* ' + ($('Parse Classification').item.json.sender_name || $('Parse Classification').item.json.sender_email) + '\\n*Subject:* ' + $('Parse Classification').item.json.subject + '\\n\\n' + $('Parse Classification').item.json.reasoning }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "Markdown"
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [2640, 50],
-      "id": "f0000000-0000-0000-0000-00000000000d",
-      "name": "Alert: Urgent Email",
-      "webhookId": "f0000000-aaaa-aaaa-aaaa-00000000000d",
-      "credentials": {
-        "telegramApi": {
-          "id": "5OBH03yqBZkCK8vF",
-          "name": "jarvis_mork_bot"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT set_user_context('{{ $('Get Gmail Account').item.json.user_id }}'::uuid);\nINSERT INTO urgent_queue (user_id, triage_log_id, summary)\nSELECT\n  current_user_id(),\n  etl.id,\n  $conv${{ $('Parse Classification').item.json.subject }}$conv$ || ' — ' || $conv${{ $('Parse Classification').item.json.reasoning }}$conv$\nFROM email_triage_log etl\nWHERE etl.gmail_message_id = $conv${{ $('Parse Classification').item.json.gmail_message_id }}$conv$\nLIMIT 1\nRETURNING id, summary;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [2640, 150],
-      "id": "f0000000-0000-0000-0000-00000000000e",
-      "name": "Insert Urgent Queue",
-      "alwaysOutputData": true,
-      "credentials": {
-        "postgres": {
-          "id": "4GL0UUth7Vx2LhMC",
-          "name": "Postgres - Executive Assistant"
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_HEADER_AUTH_CRED_ID",
+          "name": "Worker Internal Auth"
         }
       }
     }
   ],
   "connections": {
-    "When Run Manually": {
-      "main": [[{ "node": "Get Gmail Account", "type": "main", "index": 0 }]]
-    },
-    "Get Gmail Account": {
-      "main": [[{ "node": "Set RLS Context", "type": "main", "index": 0 }]]
-    },
-    "Set RLS Context": {
-      "main": [[{ "node": "List Recent Messages", "type": "main", "index": 0 }]]
-    },
-    "List Recent Messages": {
-      "main": [[{ "node": "Check Already Triaged", "type": "main", "index": 0 }]]
-    },
-    "Check Already Triaged": {
-      "main": [[{ "node": "Is New?", "type": "main", "index": 0 }]]
-    },
-    "Is New?": {
-      "main": [
-        [{ "node": "Get Message Details", "type": "main", "index": 0 }],
-        []
-      ]
-    },
-    "Get Message Details": {
-      "main": [[{ "node": "Build Classify Request", "type": "main", "index": 0 }]]
-    },
-    "Build Classify Request": {
-      "main": [[{ "node": "Call Claude (Classify)", "type": "main", "index": 0 }]]
-    },
-    "Call Claude (Classify)": {
-      "main": [[{ "node": "Parse Classification", "type": "main", "index": 0 }]]
-    },
-    "Parse Classification": {
-      "main": [[{ "node": "Save Triage Result", "type": "main", "index": 0 }]]
-    },
-    "Save Triage Result": {
-      "main": [[{ "node": "Is Urgent?", "type": "main", "index": 0 }]]
-    },
-    "Is Urgent?": {
-      "main": [
-        [
-          { "node": "Alert: Urgent Email",  "type": "main", "index": 0 },
-          { "node": "Insert Urgent Queue", "type": "main", "index": 0 }
-        ],
-        []
-      ]
+    "New Email (Personal)": {
+      "main": [[{ "node": "POST → Worker /events/gmail", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
@@ -315,7 +57,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "phase1-v1",
+  "versionId": "phase1-v2-worker",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "de1472e1fab071aa80971c21b72fe39da906763fad6f8d61403e262b4b85c3b6"

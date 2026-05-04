@@ -360,7 +360,15 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
       escapeMarkdown(classification.reasoning),
     ].join('\n');
 
-    await sendMessage(alertText, { parseMode: 'Markdown', disablePreview: true });
+    await sendMessage(alertText, {
+      parseMode: 'Markdown',
+      disablePreview: true,
+      inlineKeyboard: [[
+        { text: '✅ Correct', callback_data: `fb:correct:${decisionId}` },
+        { text: '❌ Wrong',   callback_data: `fb:wrong:${decisionId}` },
+        { text: '✏️ Adjust',  callback_data: `fb:adjust:${decisionId}` },
+      ]],
+    });
   }
 
   res.status(200).json({

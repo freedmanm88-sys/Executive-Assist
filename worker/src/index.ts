@@ -7,6 +7,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { config } from './config.js';
 import { requireInternalAuth } from './auth.js';
 import { gmailEventHandler } from './handlers/gmail-event.js';
+import { telegramCallbackHandler, telegramFeedbackReplyHandler } from './handlers/feedback-event.js';
 import { pool } from './db.js';
 import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
@@ -26,7 +27,9 @@ app.get('/healthz', (_req, res) => {
 
 // ---------- Authenticated routes ---------------------------------------------
 
-app.post('/events/gmail', requireInternalAuth, asyncHandler(gmailEventHandler));
+app.post('/events/gmail',                  requireInternalAuth, asyncHandler(gmailEventHandler));
+app.post('/events/telegram-callback',      requireInternalAuth, asyncHandler(telegramCallbackHandler));
+app.post('/events/telegram-feedback-reply', requireInternalAuth, asyncHandler(telegramFeedbackReplyHandler));
 
 // Manual cron trigger — useful for testing without waiting for 8 AM.
 // Same auth as /events/* so n8n could trigger it on demand if needed.

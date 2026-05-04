@@ -8,6 +8,8 @@ import { config } from './config.js';
 import { requireInternalAuth } from './auth.js';
 import { gmailEventHandler } from './handlers/gmail-event.js';
 import { pool } from './db.js';
+import { registerCrons } from './crons/index.js';
+import { runDailyDigest } from './crons/daily-digest.js';
 
 const app = express();
 
@@ -25,6 +27,13 @@ app.get('/healthz', (_req, res) => {
 // ---------- Authenticated routes ---------------------------------------------
 
 app.post('/events/gmail', requireInternalAuth, asyncHandler(gmailEventHandler));
+
+// Manual cron trigger — useful for testing without waiting for 8 AM.
+// Same auth as /events/* so n8n could trigger it on demand if needed.
+app.post('/cron/daily-digest', requireInternalAuth, asyncHandler(async (_req, res) => {
+  const result = await runDailyDigest();
+  res.status(200).json(result);
+}));
 
 // ---------- 404 + error handler ----------------------------------------------
 
@@ -45,6 +54,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const server = app.listen(config.PORT, () => {
   console.log(`[ready] worker listening on :${config.PORT} (env=${config.NODE_ENV})`);
+  registerCrons();
 });
 
 // ---------- Graceful shutdown ------------------------------------------------

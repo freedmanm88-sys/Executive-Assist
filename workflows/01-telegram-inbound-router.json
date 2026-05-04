@@ -3,13 +3,13 @@
   "nodes": [
     {
       "parameters": {
-        "updates": ["message"],
-        "additionalFields": { "appendAttribution": false }
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
       },
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
-      "id": "020338c3-4f4f-41d6-a0e9-33c5aa8afb55",
+      "position": [-2816, 2416],
+      "id": "e3fc6a8e-bcf7-452c-b383-c3c3ff163472",
       "name": "Telegram Trigger",
       "webhookId": "1154f1a4-dcb8-4759-9370-66e25fe470ce",
       "credentials": {
@@ -21,14 +21,109 @@
     },
     {
       "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "d19c88bb-f903-4796-ba2c-0fefa79ca090",
+                    "leftValue": "={{ Boolean($json.callback_query) }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Callback"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "1417106c-ed57-4f92-bcda-f29e66596552",
+                    "leftValue": "={{ $json.message?.reply_to_message?.text || '' }}",
+                    "rightValue": "[FB#",
+                    "operator": { "type": "string", "operation": "startsWith" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "FeedbackReply"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Default"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [-2608, 2416],
+      "id": "f79b4f20-403f-45fc-bac2-9fdb894f7548",
+      "name": "Update Type Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://worker-production-5e83.up.railway.app/events/telegram-callback",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-2384, 2200],
+      "id": "aa000001-0000-0000-0000-000000000001",
+      "name": "POST → Worker /telegram-callback",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_WORKER_INTERNAL_AUTH_CRED_ID",
+          "name": "Worker Internal Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://worker-production-5e83.up.railway.app/events/telegram-feedback-reply",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": { "timeout": 60000 }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-2384, 2350],
+      "id": "aa000002-0000-0000-0000-000000000002",
+      "name": "POST → Worker /telegram-feedback-reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_WORKER_INTERNAL_AUTH_CRED_ID",
+          "name": "Worker Internal Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT id, is_admin, plan FROM users WHERE telegram_chat_id = {{ $json.message.chat.id }}",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [208, 0],
-      "id": "0781f04e-ea44-4575-bad8-f594cbebccd5",
+      "position": [-2384, 2416],
+      "id": "442984b8-4898-43ad-a215-43b6e5eb3654",
       "name": "Lookup User",
       "credentials": {
         "postgres": {
@@ -45,8 +140,8 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [400, 0],
-      "id": "ae84a775-7c74-429f-882f-d1f68df64e2c",
+      "position": [-2160, 2416],
+      "id": "cf88ae06-d2fa-444d-8290-dde52c763fea",
       "name": "Set RLS Context",
       "credentials": {
         "postgres": {
@@ -148,8 +243,8 @@
       },
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
-      "position": [592, 0],
-      "id": "221ef8dc-0f5f-4c50-8b09-1c1a856424ef",
+      "position": [-1936, 2352],
+      "id": "710193b6-d5e9-43c2-93c4-28a77d40c66c",
       "name": "Command Lookup"
     },
     {
@@ -170,8 +265,8 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [820, 240],
-      "id": "9ecfbb5d-dc9e-4a80-999e-0faf4ad64e9c",
+      "position": [-1712, 2512],
+      "id": "cc378efe-866f-48e9-b1e3-66b0a880fb85",
       "name": "Is Admin User?"
     },
     {
@@ -182,8 +277,8 @@
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [820, 384],
-      "id": "f2d1c8a1-9b3e-4a52-91d7-11aabbccddee",
+      "position": [-1712, 2800],
+      "id": "4261da4f-2a31-475c-8d90-b36be92f21b0",
       "name": "Build Help Text",
       "credentials": {
         "postgres": {
@@ -200,8 +295,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1040, 384],
-      "id": "7fede185-f7b9-48cd-a865-3f248bddd34a",
+      "position": [-1488, 2800],
+      "id": "674a83d9-29be-4760-ac56-6912ae5dc7ab",
       "name": "Help Reply",
       "webhookId": "66681d64-beee-43fa-b38a-653d00216a0f",
       "credentials": {
@@ -219,8 +314,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [820, -240],
-      "id": "11111111-1111-1111-1111-111111111111",
+      "position": [-1712, 1936],
+      "id": "0746a753-a6c3-41ca-8348-503578453166",
       "name": "Today Placeholder",
       "webhookId": "11111111-aaaa-aaaa-aaaa-111111111111",
       "credentials": {
@@ -238,8 +333,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [820, -120],
-      "id": "22222222-2222-2222-2222-222222222222",
+      "position": [-1712, 2128],
+      "id": "22fadf79-3342-4b19-a5b0-ba817ddc966d",
       "name": "Urgent Placeholder",
       "webhookId": "22222222-aaaa-aaaa-aaaa-222222222222",
       "credentials": {
@@ -257,8 +352,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [820, 0],
-      "id": "33333333-3333-3333-3333-333333333333",
+      "position": [-1712, 2320],
+      "id": "47c1cfda-f460-4c0b-a2e2-18fb97c76e87",
       "name": "Rules Placeholder",
       "webhookId": "33333333-aaaa-aaaa-aaaa-333333333333",
       "credentials": {
@@ -276,8 +371,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1040, 180],
-      "id": "44444444-4444-4444-4444-444444444444",
+      "position": [-1488, 2416],
+      "id": "d3350b2e-2889-4590-b259-6601bbb57592",
       "name": "Admin Placeholder",
       "webhookId": "44444444-aaaa-aaaa-aaaa-444444444444",
       "credentials": {
@@ -295,8 +390,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1040, 300],
-      "id": "55555555-5555-5555-5555-555555555555",
+      "position": [-1488, 2608],
+      "id": "5088291e-ab5e-4afd-83e9-4e1c3b717c86",
       "name": "Not Authorized",
       "webhookId": "55555555-aaaa-aaaa-aaaa-555555555555",
       "credentials": {
@@ -312,34 +407,48 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [820, 540],
-      "id": "77777777-7777-7777-7777-777777777777",
+      "position": [-1712, 2992],
+      "id": "1344a9de-e943-4be4-aa9a-fc6dbf6e9f96",
       "name": "Prepare Chat Agent Input"
     },
     {
       "parameters": {
-        "source": "database",
         "workflowId": {
           "__rl": true,
+          "value": "jpVleNSYXONxhqVB",
           "mode": "list",
-          "value": "REPLACE_WITH_W2_WORKFLOW_ID",
+          "cachedResultUrl": "/workflow/jpVleNSYXONxhqVB",
           "cachedResultName": "02 - Chat Agent"
         },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
         "mode": "each",
-        "options": {
-          "waitForSubWorkflow": false
-        }
+        "options": { "waitForSubWorkflow": false }
       },
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1040, 540],
-      "id": "88888888-8888-8888-8888-888888888888",
+      "position": [-1488, 2992],
+      "id": "02d7c4c6-7981-49d4-bd3d-d9823ca1ae07",
       "name": "Call Chat Agent"
     }
   ],
+  "pinData": {},
   "connections": {
     "Telegram Trigger": {
-      "main": [[{ "node": "Lookup User", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Update Type Switch", "type": "main", "index": 0 }]]
+    },
+    "Update Type Switch": {
+      "main": [
+        [{ "node": "POST → Worker /telegram-callback",       "type": "main", "index": 0 }],
+        [{ "node": "POST → Worker /telegram-feedback-reply", "type": "main", "index": 0 }],
+        [{ "node": "Lookup User",                              "type": "main", "index": 0 }]
+      ]
     },
     "Lookup User": {
       "main": [[{ "node": "Set RLS Context", "type": "main", "index": 0 }]]
@@ -349,12 +458,12 @@
     },
     "Command Lookup": {
       "main": [
-        [{ "node": "Today Placeholder",  "type": "main", "index": 0 }],
-        [{ "node": "Urgent Placeholder", "type": "main", "index": 0 }],
-        [{ "node": "Rules Placeholder",  "type": "main", "index": 0 }],
-        [{ "node": "Is Admin User?",     "type": "main", "index": 0 }],
-        [{ "node": "Build Help Text",    "type": "main", "index": 0 }],
-        [{ "node": "Prepare Chat Agent Input", "type": "main", "index": 0 }]
+        [{ "node": "Today Placeholder",         "type": "main", "index": 0 }],
+        [{ "node": "Urgent Placeholder",        "type": "main", "index": 0 }],
+        [{ "node": "Rules Placeholder",         "type": "main", "index": 0 }],
+        [{ "node": "Is Admin User?",            "type": "main", "index": 0 }],
+        [{ "node": "Build Help Text",           "type": "main", "index": 0 }],
+        [{ "node": "Prepare Chat Agent Input",  "type": "main", "index": 0 }]
       ]
     },
     "Prepare Chat Agent Input": {
@@ -370,12 +479,16 @@
       "main": [[{ "node": "Help Reply", "type": "main", "index": 0 }]]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dHFlvKqbX1sho9y8",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   },
-  "versionId": "phase1-v1",
+  "versionId": "phase2-v1-feedback",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "de1472e1fab071aa80971c21b72fe39da906763fad6f8d61403e262b4b85c3b6"

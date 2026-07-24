@@ -17,6 +17,7 @@ import { withUserContext } from '../db.js';
 import { classifyEmail } from '../classifiers/email-triage.js';
 import type { ClassifyResult } from '../classifiers/email-triage.js';
 import { loadTriageRules, matchTriageRules, loadTriagePreferences } from '../triage-rules.js';
+import { extractProposal, createProposal } from '../proposal-extract.js';
 import { sendMessage, escapeMarkdown } from '../telegram.js';
 import { sendPushToUser } from '../push.js';
 import { config } from '../config.js';
@@ -376,6 +377,29 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
     classification,
     modelUsed:       'claude-sonnet-4-5-20250929',
   });
+
+  // Email → proposed family task/event. Personal inbox only (business email
+  // must never leak into the shared family space). Best-effort.
+  if (
+    gmail_account_label === 'personal' &&
+    (classification.classification === 'action' || classification.classification === 'calendar')
+  ) {
+    try {
+      const payload = await extractProposal({
+        subject: headers.subject,
+        fromHeader: headers.fromHeader,
+        bodySnippet: body,
+      });
+      if (payload) {
+        await createProposal(userId, triageId, {
+          subject: headers.subject,
+          senderEmail: headers.senderEmail,
+        }, payload);
+      }
+    } catch (err) {
+      console.error('[gmail-event] proposal extraction failed (non-fatal):', err);
+    }
+  }
 
   const isUrgent = classification.classification === 'urgent' || classification.urgency_score >= 80;
 

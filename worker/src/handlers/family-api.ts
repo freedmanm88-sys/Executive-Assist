@@ -26,6 +26,7 @@ import { MIGRATION_06_SQL, MIGRATION_06_NAME } from '../migrations/06-family-app
 import { MIGRATION_07_SQL, MIGRATION_07_NAME } from '../migrations/07-habits-shared.js';
 import { MIGRATION_08_SQL, MIGRATION_08_NAME } from '../migrations/08-push-subscriptions.js';
 import { MIGRATION_09_SQL, MIGRATION_09_NAME } from '../migrations/09-task-meta.js';
+import { MIGRATION_10_SQL, MIGRATION_10_NAME } from '../migrations/10-family-proposals.js';
 import { getVapidKeys, sendPushToUser } from '../push.js';
 import { setPin, verifyPin } from '../pin.js';
 import { runAssistant } from './family-assistant.js';
@@ -598,6 +599,91 @@ familyRouter.post('/feedback', asyncMw(async (req, res) => {
   res.json({ status: 'recorded', feedback: 'adjusted', parsed });
 }));
 
+// --- Email proposals (suggested tasks/events) --------------------------------
+
+familyRouter.get('/proposals', asyncMw(async (req, res) => {
+  const status = req.query['status'] === 'all' ? null : 'pending';
+  const rows = await withUserContext(familyUserId(res), async (client) => {
+    const { rows } = await client.query(
+      `SELECT p.*, u.full_name AS resolved_by_name
+       FROM family_proposals p
+       LEFT JOIN users u ON u.id = p.resolved_by
+       WHERE ($1::text IS NULL OR p.status = $1)
+       ORDER BY p.created_at DESC
+       LIMIT 50`,
+      [status],
+    );
+    return rows;
+  });
+  res.json({ proposals: rows });
+}));
+
+const ResolveSchema = z.object({
+  action:      z.enum(['accept', 'dismiss']),
+  assigned_to: uuid.nullish(),   // accept only: who the created task is for
+});
+
+familyRouter.post('/proposals/:id/resolve', asyncMw(async (req, res) => {
+  const id = uuid.parse(req.params['id']);
+  const body = ResolveSchema.parse(req.body);
+  const uid = familyUserId(res);
+
+  const result = await withUserContext(uid, async (client) => {
+    const { rows } = await client.query(
+      `SELECT * FROM family_proposals WHERE id = $1::uuid AND status = 'pending'`,
+      [id],
+    );
+    const proposal = rows[0];
+    if (!proposal) return null;
+
+    let createdTaskId: string | null = null;
+    let createdEventId: string | null = null;
+
+    if (body.action === 'accept') {
+      const p = proposal.payload as Record<string, unknown>;
+      const source = `email:${proposal.triage_log_id ?? 'unknown'}`;
+      if (proposal.kind === 'task') {
+        const ins = await client.query(
+          `INSERT INTO family_tasks (title, notes, assigned_to, due_at, category, created_by, source)
+           VALUES ($1, $2, $3,
+                   CASE WHEN $4::text IS NULL THEN NULL
+                        ELSE (($4::date + time '23:59') AT TIME ZONE 'America/Toronto') END,
+                   $5, $6::uuid, $7)
+           RETURNING id`,
+          [p['title'], p['notes'] ?? null, body.assigned_to ?? null, p['due_date'] ?? null, 'Family', uid, source],
+        );
+        createdTaskId = ins.rows[0].id;
+      } else {
+        const time = typeof p['time'] === 'string' ? p['time'] : null;
+        const dur = typeof p['duration_min'] === 'number' ? p['duration_min'] : 60;
+        const ins = await client.query(
+          `INSERT INTO family_events (title, notes, location, start_at, end_at, all_day, created_by, source)
+           VALUES ($1, $2, $3,
+                   (($4::text || ' ' || COALESCE($5::text, '00:00'))::timestamp AT TIME ZONE 'America/Toronto'),
+                   CASE WHEN $5::text IS NULL THEN NULL
+                        ELSE ((($4::text || ' ' || $5::text)::timestamp + ($6 || ' minutes')::interval) AT TIME ZONE 'America/Toronto') END,
+                   $5::text IS NULL, $7::uuid, $8)
+           RETURNING id`,
+          [p['title'], p['notes'] ?? null, p['location'] ?? null, p['date'], time, String(dur), uid, source],
+        );
+        createdEventId = ins.rows[0].id;
+      }
+    }
+
+    await client.query(
+      `UPDATE family_proposals
+       SET status = $1, resolved_by = $2::uuid, resolved_at = NOW(),
+           created_task_id = $3, created_event_id = $4
+       WHERE id = $5::uuid`,
+      [body.action === 'accept' ? 'accepted' : 'dismissed', uid, createdTaskId, createdEventId, id],
+    );
+    return { createdTaskId, createdEventId };
+  });
+
+  if (!result) { res.status(404).json({ error: 'proposal_not_found_or_resolved' }); return; }
+  res.json({ resolved: true, ...result });
+}));
+
 // --- PIN management ----------------------------------------------------------
 
 const PinBody = z.object({ pin: z.string().min(4).max(12) });
@@ -712,6 +798,7 @@ export async function runMigrations(_req: Request, res: Response): Promise<void>
     { name: MIGRATION_07_NAME, sql: MIGRATION_07_SQL },
     { name: MIGRATION_08_NAME, sql: MIGRATION_08_SQL },
     { name: MIGRATION_09_NAME, sql: MIGRATION_09_SQL },
+    { name: MIGRATION_10_NAME, sql: MIGRATION_10_SQL },
   ];
   const client = await pool.connect();
   const applied: string[] = [];

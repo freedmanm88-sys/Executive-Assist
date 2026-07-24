@@ -65,3 +65,24 @@
 - ICS settings form now dynamic (any number of named feeds). Chiro public feed connected (flsb5jq2...@import.calendar.google.com — Mark's embed link had usable ID; Ashley's work cal is private → needs her secret address). Real chiro appt verified rendering.
 - **Email→proposal bridge (migration 10):** personal-inbox action/calendar emails → Claude extraction → family_proposals; Home "📬 Suggested from your email" card with ✓ For me / ✓ For Ashley / ✓ Anyone / Dismiss; accept creates family_task (source email:<triage_id>, category Family) or family_event; push to both on new proposal. Verified end-to-end with synthetic school email ("pizza money" → task due 2026-07-29 → accepted for Ashley → 📧 badge). Synthetic triage row marked feedback=correct; test task deleted.
 - Ashley onboarding: send https://family-app-dun-rho.vercel.app + PIN 5779.
+
+---
+
+## ⏸ PAUSED 2026-07-24 late afternoon — resume Monday 2026-07-27
+
+**System state:** Everything above is deployed and live. Worker on Railway (migrations 06–10 applied), app at https://family-app-dun-rho.vercel.app. No uncommitted work, no in-flight branches. Dev server may still be running locally (harmless).
+
+**Mark had NOT yet done (his words: "I haven't done anything else"):**
+1. Install app on his phone (Add to Home Screen) + enable notifications + **send test notification** (first real on-phone push test — unverified)
+2. Send Ashley the link + PIN 5779 (Mark's PIN 3582) — both should change PINs in Settings
+3. Paste secret `basic.ics` links for: "Mark Freedman" main cal, "Family", "Mark/Ash", Ashley's calendars (her account). Only Chiro feed is connected so far. Reminder: the two links he pasted were *embed* links; Ashley's work cal is private → needs secret address from her login.
+4. Burn down Inbox "Needs review" backlog (~99 actionable) — feeds Sunday distillation
+
+**Watch for on resume:**
+- Sunday 21:00 distillation will have run (2026-07-26) — check `triage_rules` / `learned_preferences` for first learned rules; verify no bad rules were minted (only ~4 feedback rows exist so it likely skipped: needs ≥2 corrections in 14d — we have 2 adjusted+wrong? Check).
+- Sunday 18:00 weekly summary + daily 9:00/20:00 crons now fire — if Mark hasn't enabled push on any device, they no-op silently (sent:0). First real push arrives once he subscribes a device.
+- Urgent-nag: queue was cleared (24 expired); consolidated behavior verified.
+
+**Next build ideas (discussed, not committed):** forward-to-assistant email address (blocked: Resend account auth in claude.ai connectors), kid mode for Logan/Jackson, manual calorie/meal log (MFP API is dead; auto-sync needs native shell), event-proposal for Ashley-visible calendars, offline caching in sw.js.
+
+**Key IDs (avoid re-lookup):** Mark 591ebda6-7476-4dc6-8296-687eb4e13c57 · Ashley b804bb54-9685-4df2-ac16-f6382573deb4 · worker https://worker-production-5e83.up.railway.app · Vercel project mark-6073s-projects/family-app.

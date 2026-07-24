@@ -9,10 +9,11 @@ import { config } from './config.js';
 import { requireInternalAuth } from './auth.js';
 import { gmailEventHandler } from './handlers/gmail-event.js';
 import { telegramCallbackHandler, telegramFeedbackReplyHandler } from './handlers/feedback-event.js';
-import { familyRouter, runMigration06 } from './handlers/family-api.js';
+import { familyRouter, runMigrations } from './handlers/family-api.js';
 import { pool } from './db.js';
 import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
+import { runUrgentNag } from './crons/urgent-nag.js';
 
 const app = express();
 
@@ -37,13 +38,18 @@ app.post('/events/telegram-feedback-reply', requireInternalAuth, asyncHandler(te
 // plus per-request X-Family-User member validation inside the router.
 app.use('/family', requireInternalAuth, familyRouter);
 
-// Idempotent migration runner — applies migration 06 (family tables + Ashley).
-app.post('/admin/migrate', requireInternalAuth, asyncHandler(runMigration06));
+// Idempotent migration runner — applies all embedded migrations in order.
+app.post('/admin/migrate', requireInternalAuth, asyncHandler(runMigrations));
 
 // Manual cron trigger — useful for testing without waiting for 8 AM.
 // Same auth as /events/* so n8n could trigger it on demand if needed.
 app.post('/cron/daily-digest', requireInternalAuth, asyncHandler(async (_req, res) => {
   const result = await runDailyDigest();
+  res.status(200).json(result);
+}));
+
+app.post('/cron/urgent-nag', requireInternalAuth, asyncHandler(async (_req, res) => {
+  const result = await runUrgentNag();
   res.status(200).json(result);
 }));
 

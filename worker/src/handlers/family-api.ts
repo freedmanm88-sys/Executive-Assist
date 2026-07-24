@@ -23,6 +23,7 @@ import {
   parseFeedbackWithClaude,
 } from '../feedback-core.js';
 import { MIGRATION_06_SQL, MIGRATION_06_NAME } from '../migrations/06-family-app.js';
+import { MIGRATION_07_SQL, MIGRATION_07_NAME } from '../migrations/07-habits-shared.js';
 
 // ---------- Family member validation (cached) --------------------------------
 
@@ -419,6 +420,106 @@ familyRouter.delete('/events/:id', asyncMw(async (req, res) => {
   res.json({ deleted: true });
 }));
 
+// --- Habits (family accountability) ------------------------------------------
+
+const HabitCreateSchema = z.object({
+  name:            z.string().min(1).max(120),
+  description:     z.string().max(500).nullish(),
+  target_per_week: z.number().int().min(1).max(7).nullish(),
+  shared:          z.boolean().nullish(),
+});
+
+/**
+ * Own habits + the other member's shared habits, with this-week counts.
+ * Week starts Monday, Toronto time. The explicit WHERE does the scoping
+ * (the worker connects as table owner, so RLS alone wouldn't).
+ */
+familyRouter.get('/habits', asyncMw(async (_req, res) => {
+  const uid = familyUserId(res);
+  const rows = await withUserContext(uid, async (client) => {
+    const { rows } = await client.query(
+      `SELECT
+         h.id, h.user_id, u.full_name AS owner_name,
+         h.name, h.description, h.target_per_week, h.shared,
+         (SELECT COUNT(*)::int FROM habit_logs l
+           WHERE l.habit_id = h.id
+             AND (l.completed_at AT TIME ZONE 'America/Toronto')::date
+                 >= date_trunc('week', NOW() AT TIME ZONE 'America/Toronto')::date
+         ) AS week_count,
+         EXISTS (SELECT 1 FROM habit_logs l
+           WHERE l.habit_id = h.id
+             AND (l.completed_at AT TIME ZONE 'America/Toronto')::date
+                 = (NOW() AT TIME ZONE 'America/Toronto')::date
+         ) AS done_today
+       FROM habits h
+       JOIN users u ON u.id = h.user_id
+       WHERE h.active AND (h.user_id = $1::uuid OR h.shared)
+       ORDER BY u.created_at, h.created_at`,
+      [uid],
+    );
+    return rows;
+  });
+  res.json({ habits: rows });
+}));
+
+familyRouter.post('/habits', asyncMw(async (req, res) => {
+  const body = HabitCreateSchema.parse(req.body);
+  const uid = familyUserId(res);
+  const row = await withUserContext(uid, async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO habits (user_id, name, description, cadence, target_per_week, shared)
+       VALUES ($1::uuid, $2, $3, 'daily', COALESCE($4, 7), COALESCE($5, TRUE))
+       RETURNING *`,
+      [uid, body.name, body.description ?? null, body.target_per_week ?? null, body.shared ?? null],
+    );
+    return rows[0];
+  });
+  res.status(201).json({ habit: row });
+}));
+
+/** Toggle today's check-in on one of MY habits (logs are personal). */
+familyRouter.post('/habits/:id/toggle', asyncMw(async (req, res) => {
+  const habitId = uuid.parse(req.params['id']);
+  const uid = familyUserId(res);
+  const result = await withUserContext(uid, async (client) => {
+    const owned = await client.query(
+      `SELECT 1 FROM habits WHERE id = $1::uuid AND user_id = $2::uuid AND active`,
+      [habitId, uid],
+    );
+    if (owned.rowCount === 0) return null;
+
+    const del = await client.query(
+      `DELETE FROM habit_logs
+       WHERE habit_id = $1::uuid AND user_id = $2::uuid
+         AND (completed_at AT TIME ZONE 'America/Toronto')::date
+             = (NOW() AT TIME ZONE 'America/Toronto')::date`,
+      [habitId, uid],
+    );
+    if (del.rowCount === 0) {
+      await client.query(
+        `INSERT INTO habit_logs (user_id, habit_id, source) VALUES ($1::uuid, $2::uuid, 'family-app')`,
+        [uid, habitId],
+      );
+    }
+    return { done_today: del.rowCount === 0 };
+  });
+  if (!result) { res.status(404).json({ error: 'habit_not_found_or_not_yours' }); return; }
+  res.json(result);
+}));
+
+/** Archive one of MY habits. */
+familyRouter.delete('/habits/:id', asyncMw(async (req, res) => {
+  const habitId = uuid.parse(req.params['id']);
+  const uid = familyUserId(res);
+  await withUserContext(uid, (client) =>
+    client.query(
+      `UPDATE habits SET active = FALSE WHERE id = $1::uuid AND user_id = $2::uuid`,
+      [habitId, uid],
+    ),
+  );
+  res.json({ archived: true });
+}));
+
 // --- Triage feed + feedback --------------------------------------------------
 
 familyRouter.get('/feed', asyncMw(async (req, res) => {
@@ -513,20 +614,29 @@ familyRouter.put('/settings', asyncMw(async (req, res) => {
 // ---------- Migration runner (admin) -----------------------------------------
 
 /**
- * Applies migration 06 idempotently. Behind X-Internal-Auth (mounted in
- * index.ts), NOT behind requireFamilyUser — it must run before Ashley exists.
+ * Applies all embedded migrations idempotently, in order. Behind
+ * X-Internal-Auth (mounted in index.ts), NOT behind requireFamilyUser —
+ * migration 06 must be able to run before Ashley exists.
  */
-export async function runMigration06(_req: Request, res: Response): Promise<void> {
+export async function runMigrations(_req: Request, res: Response): Promise<void> {
+  const migrations = [
+    { name: MIGRATION_06_NAME, sql: MIGRATION_06_SQL },
+    { name: MIGRATION_07_NAME, sql: MIGRATION_07_SQL },
+  ];
   const client = await pool.connect();
+  const applied: string[] = [];
   try {
-    await client.query('BEGIN');
-    await client.query(MIGRATION_06_SQL);
-    await client.query('COMMIT');
-    memberCache = null;  // Ashley may have just been created
-    res.json({ applied: MIGRATION_06_NAME });
+    for (const m of migrations) {
+      await client.query('BEGIN');
+      await client.query(m.sql);
+      await client.query('COMMIT');
+      applied.push(m.name);
+    }
+    memberCache = null;  // users may have just been created
+    res.json({ applied });
   } catch (err) {
     await client.query('ROLLBACK');
-    throw err;
+    res.status(500).json({ error: 'migration_failed', applied, failed_after: applied.length, message: (err as Error).message });
   } finally {
     client.release();
   }

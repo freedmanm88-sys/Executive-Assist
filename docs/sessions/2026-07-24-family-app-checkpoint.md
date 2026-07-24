@@ -59,3 +59,9 @@
 - **Inbox noise fix:** feed actionable=1 param; app Inbox + badge now count only urgent/action/reply_needed/calendar pending (badge dropped 99+ → 98 actionable backlog).
 - Notification crons registered: morning tasks @9, habit nudge @20, weekly summary Sun@18, distillation Sun@21 (all America/Toronto).
 - Migrations 06–09 all applied to PROD via /admin/migrate.
+
+## Session part 5 — filters, dynamic feeds, email→proposal bridge
+- Filters live: Tasks (Everyone/Mine/Ashley's/Anyone × category), Lists (added-by), Calendar (source chips via CalendarList client comp).
+- ICS settings form now dynamic (any number of named feeds). Chiro public feed connected (flsb5jq2...@import.calendar.google.com — Mark's embed link had usable ID; Ashley's work cal is private → needs her secret address). Real chiro appt verified rendering.
+- **Email→proposal bridge (migration 10):** personal-inbox action/calendar emails → Claude extraction → family_proposals; Home "📬 Suggested from your email" card with ✓ For me / ✓ For Ashley / ✓ Anyone / Dismiss; accept creates family_task (source email:<triage_id>, category Family) or family_event; push to both on new proposal. Verified end-to-end with synthetic school email ("pizza money" → task due 2026-07-29 → accepted for Ashley → 📧 badge). Synthetic triage row marked feedback=correct; test task deleted.
+- Ashley onboarding: send https://family-app-dun-rho.vercel.app + PIN 5779.

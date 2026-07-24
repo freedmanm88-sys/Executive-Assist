@@ -39,6 +39,10 @@
 - **Event editing shipped:** pencil icon on family events → inline edit form (title/date/time/duration/all-day/location), verified create→edit→delete.
 - `/admin/migrate` now applies all embedded migrations in order (06, 07).
 
+## Session part 3 — web push pipeline
+- Worker: `web-push` dep; VAPID keys auto-generated + persisted in `family_settings.vapid_keys` (no Railway env access needed); migration 08 `push_subscriptions`; endpoints `/family/push/{vapid-public-key,subscribe,unsubscribe,test}`; best-effort `sendPushToUser` wired into urgent alerts, daily digest, and urgent-nag (never blocks Telegram path; prunes 404/410 subs).
+- App: `sw.js` push + notificationclick handlers (opens the right tab), Settings "Enable on this device" toggle + test button. Verified locally: toggle renders and degrades gracefully where notifications are blocked. **On-phone verification pending Vercel deploy** (iPhone requires the installed-to-home-screen app).
+
 ## Notes / follow-ups
 - Mark's users row email is `mark@sophaxconsulting.com`; login maps freedman.m88@gmail.com → that row (see IDENTITIES in `app/login/actions.ts`).
 - Demo item "Milk (2%)" + comment left in Grocery list.

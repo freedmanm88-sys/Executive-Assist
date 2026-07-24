@@ -4,10 +4,12 @@
  */
 
 import express, { type Request, type Response, type NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { config } from './config.js';
 import { requireInternalAuth } from './auth.js';
 import { gmailEventHandler } from './handlers/gmail-event.js';
 import { telegramCallbackHandler, telegramFeedbackReplyHandler } from './handlers/feedback-event.js';
+import { familyRouter, runMigration06 } from './handlers/family-api.js';
 import { pool } from './db.js';
 import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
@@ -31,6 +33,13 @@ app.post('/events/gmail',                  requireInternalAuth, asyncHandler(gma
 app.post('/events/telegram-callback',      requireInternalAuth, asyncHandler(telegramCallbackHandler));
 app.post('/events/telegram-feedback-reply', requireInternalAuth, asyncHandler(telegramFeedbackReplyHandler));
 
+// Family app API (Next.js frontend on Vercel → here). Same shared secret,
+// plus per-request X-Family-User member validation inside the router.
+app.use('/family', requireInternalAuth, familyRouter);
+
+// Idempotent migration runner — applies migration 06 (family tables + Ashley).
+app.post('/admin/migrate', requireInternalAuth, asyncHandler(runMigration06));
+
 // Manual cron trigger — useful for testing without waiting for 8 AM.
 // Same auth as /events/* so n8n could trigger it on demand if needed.
 app.post('/cron/daily-digest', requireInternalAuth, asyncHandler(async (_req, res) => {
@@ -46,6 +55,10 @@ app.use((req, res) => {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (err instanceof ZodError) {
+    res.status(400).json({ error: 'invalid_request', details: err.flatten() });
+    return;
+  }
   console.error('[error]', err.stack ?? err);
   res.status(500).json({
     error: 'internal_error',

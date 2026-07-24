@@ -13,6 +13,10 @@
 export const MIGRATION_06_NAME = '06_family_app';
 
 export const MIGRATION_06_SQL = `
+-- Display-name fix: the seed row says 'Mork'
+UPDATE users SET full_name = 'Mark'
+WHERE id = '591ebda6-7476-4dc6-8296-687eb4e13c57'::uuid AND full_name = 'Mork';
+
 -- Ashley (user #2). Mark already exists (looked up by USER_ID at runtime).
 INSERT INTO users (email, full_name, plan, is_admin, tax_region, timezone)
 VALUES ('awronzberg@gmail.com', 'Ashley', 'unlimited', FALSE, 'CA-ON', 'America/Toronto')

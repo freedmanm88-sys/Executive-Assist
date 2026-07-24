@@ -1,0 +1,43 @@
+import { requireSession } from '@/lib/auth';
+import { workerFetch } from '@/lib/worker';
+import type { FeedConfig } from '@/lib/ics';
+import { IcsFeedsForm } from '@/components/ics-feeds-form';
+import { LogoutButton } from '@/components/logout-button';
+
+export const dynamic = 'force-dynamic';
+
+export default async function SettingsPage() {
+  const session = await requireSession();
+  const { settings } = await workerFetch<{ settings: Record<string, unknown> }>(
+    '/family/settings',
+    { userId: session.uid },
+  );
+  const feeds = (settings['ics_feeds'] as FeedConfig[] | undefined) ?? [];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h1 className="text-xl font-bold">Settings</h1>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Google Calendars</h2>
+        <p className="text-sm opacity-70">
+          Paste each calendar&apos;s <b>secret iCal address</b>: Google Calendar →
+          ⚙ Settings → pick the calendar → “Integrate calendar” → <i>Secret address
+          in iCal format</i>. Events show up read-only in the app within ~5 minutes.
+        </p>
+        <IcsFeedsForm
+          initial={[
+            { name: 'Mark', url: feeds.find((f) => f.name === 'Mark')?.url ?? '' },
+            { name: 'Ashley', url: feeds.find((f) => f.name === 'Ashley')?.url ?? '' },
+          ]}
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Signed in as</h2>
+        <p className="text-sm opacity-70">{session.name}</p>
+        <LogoutButton />
+      </section>
+    </div>
+  );
+}

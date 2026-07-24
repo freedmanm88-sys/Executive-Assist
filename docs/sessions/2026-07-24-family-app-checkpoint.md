@@ -48,3 +48,14 @@
 - Demo item "Milk (2%)" + comment left in Grocery list.
 - Follow-ups: event editing UI, push notifications (web push), habits page (tables exist), Resend inbound email → calendar, retire Telegram once app has push.
 - Dev server: `npm run dev --prefix family-app` (or `.claude/launch.json` → family-app), localhost:3000.
+
+## Session part 4 — deployed to Vercel + assistant/learning round
+- **Deployed:** https://family-app-dun-rho.vercel.app (project mark-6073s-projects/family-app; env vars set via CLI; PINs Mark 3582 / Ashley 5779 until changed in-app).
+- **Quick-add assistant:** POST /family/assistant — Claude tool-use → tasks / list items / events / habit check-ins (source='assistant'). Verified live: two actions from one sentence, correct relative-date resolution.
+- **PIN management:** /family/pin/{verify,set}, scrypt hashes in family_settings; login prefers stored hash, env fallback; change-PIN form in Settings.
+- **Categories:** family_tasks.category + editable task_categories setting (Family/Kids/Logan/Jackson/Errands/Home seeded); select on create, filter chips, Settings editor.
+- **Provenance:** source on family_tasks + family_list_items (✨ assistant / 📧 email-future); ✓-by-who shown on done tasks/items.
+- **Learning loop (the big one):** triage_rules matched pre-Claude (classify:/never_urgent/always_urgent), learned_preferences injected into classifier prompt, Sunday 21:00 distillation cron (Claude distills 14d of feedback → rules+prefs, max 8/run, pushes summary). Manual: POST /cron/distillation.
+- **Inbox noise fix:** feed actionable=1 param; app Inbox + badge now count only urgent/action/reply_needed/calendar pending (badge dropped 99+ → 98 actionable backlog).
+- Notification crons registered: morning tasks @9, habit nudge @20, weekly summary Sun@18, distillation Sun@21 (all America/Toronto).
+- Migrations 06–09 all applied to PROD via /admin/migrate.

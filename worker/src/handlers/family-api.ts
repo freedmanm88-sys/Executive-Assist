@@ -533,6 +533,8 @@ familyRouter.delete('/habits/:id', asyncMw(async (req, res) => {
 familyRouter.get('/feed', asyncMw(async (req, res) => {
   const limit = Math.min(parseInt(String(req.query['limit'] ?? '40'), 10) || 40, 200);
   const pendingOnly = req.query['pending'] === '1';
+  // actionable=1 → only classes worth a human look (kills newsletter noise)
+  const actionableOnly = req.query['actionable'] === '1';
   const rows = await withUserContext(familyUserId(res), async (client) => {
     const { rows } = await client.query(
       `SELECT
@@ -553,9 +555,10 @@ familyRouter.get('/feed', asyncMw(async (req, res) => {
        LEFT JOIN gmail_accounts ga ON ga.id = etl.gmail_account_id
        WHERE d.domain = 'email_triage'
          AND ($1::boolean = FALSE OR d.feedback IS NULL)
+         AND ($3::boolean = FALSE OR etl.classification IN ('urgent', 'action', 'reply_needed', 'calendar'))
        ORDER BY d.created_at DESC
        LIMIT $2`,
-      [pendingOnly, limit],
+      [pendingOnly, limit, actionableOnly],
     );
     return rows;
   });

@@ -15,6 +15,7 @@ import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
 import { runUrgentNag } from './crons/urgent-nag.js';
 import { runMorningReminder, runHabitNudge, runWeeklySummary } from './crons/family-crons.js';
+import { runDistillation } from './crons/distillation.js';
 
 const app = express();
 
@@ -62,6 +63,9 @@ app.post('/cron/habit-nudge', requireInternalAuth, asyncHandler(async (_req, res
 }));
 app.post('/cron/weekly-summary', requireInternalAuth, asyncHandler(async (_req, res) => {
   res.status(200).json(await runWeeklySummary());
+}));
+app.post('/cron/distillation', requireInternalAuth, asyncHandler(async (_req, res) => {
+  res.status(200).json(await runDistillation());
 }));
 
 // ---------- 404 + error handler ----------------------------------------------

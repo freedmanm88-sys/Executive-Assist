@@ -34,6 +34,8 @@ export interface ClassifyInput {
   bodySnippet:  string;
   /** Friendly account label (personal, business1, business2) — affects context */
   accountLabel: 'personal' | 'business1' | 'business2';
+  /** Learned preferences (Level 2) injected into the prompt. */
+  preferences?: string[];
 }
 
 export interface ClassifyResult {
@@ -91,11 +93,17 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
  * Classify a single email. Returns the structured result, or throws on API/format failure.
  */
 export async function classifyEmail(input: ClassifyInput): Promise<ClassifyResult> {
+  const prefsBlock = input.preferences?.length
+    ? ['', "User's learned preferences (follow these; they override defaults):",
+       ...input.preferences.map((p) => `- ${p}`)]
+    : [];
+
   const userMessage = [
     `Account: ${input.accountLabel}`,
     `From: ${input.fromHeader}`,
     `Subject: ${input.subject}`,
     `Received: ${input.receivedAt}`,
+    ...prefsBlock,
     '',
     'Body:',
     input.bodySnippet || '(empty)',

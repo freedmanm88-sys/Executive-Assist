@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { withUserContext } from '../db.js';
 import { classifyEmail } from '../classifiers/email-triage.js';
 import type { ClassifyResult } from '../classifiers/email-triage.js';
+import { loadTriageRules, matchTriageRules, loadTriagePreferences } from '../triage-rules.js';
 import { sendMessage, escapeMarkdown } from '../telegram.js';
 import { sendPushToUser } from '../push.js';
 import { config } from '../config.js';
@@ -323,13 +324,45 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
   const headers = parseHeaders(message);
   const body    = extractBody(message).slice(0, 4000); // keep token cost bounded
 
-  const classification = await classifyEmail({
-    subject:      headers.subject,
-    fromHeader:   headers.fromHeader,
-    receivedAt:   headers.receivedAt,
-    bodySnippet:  body,
-    accountLabel: gmail_account_label,
+  // Level 1: hard rules (learned or hand-written) run before Claude.
+  const rules = await loadTriageRules(userId);
+  const ruleMatch = matchTriageRules(rules, {
+    senderEmail: headers.senderEmail,
+    subject: headers.subject,
   });
+
+  let classification: ClassifyResult;
+  if (ruleMatch.classify) {
+    classification = {
+      classification:   ruleMatch.classify,
+      urgency_score:    ruleMatch.classify === 'urgent' ? 85 : 5,
+      reasoning:        `Matched triage rule: ${ruleMatch.matched.map((r) => `${r.pattern_type}=${r.pattern_value}`).join(', ')}`,
+      suggested_action: ruleMatch.classify === 'newsletter' || ruleMatch.classify === 'spam' ? 'archive' : 'label_only',
+    };
+  } else {
+    const preferences = await loadTriagePreferences(userId);
+    classification = await classifyEmail({
+      subject:      headers.subject,
+      fromHeader:   headers.fromHeader,
+      receivedAt:   headers.receivedAt,
+      bodySnippet:  body,
+      preferences,
+      accountLabel: gmail_account_label,
+    });
+  }
+
+  // never_urgent / always_urgent rules adjust whatever Claude decided
+  if (ruleMatch.neverUrgent && classification.urgency_score > 40) {
+    classification = {
+      ...classification,
+      urgency_score: 40,
+      classification: classification.classification === 'urgent' ? 'action' : classification.classification,
+      reasoning: `${classification.reasoning} (urgency capped by never_urgent rule)`,
+    };
+  }
+  if (ruleMatch.alwaysUrgent && classification.classification !== 'urgent') {
+    classification = { ...classification, classification: 'urgent', urgency_score: Math.max(classification.urgency_score, 85) };
+  }
 
   const { triageId, decisionId } = await saveTriage({
     userId,

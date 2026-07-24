@@ -10,6 +10,7 @@ import cron from 'node-cron';
 import { runDailyDigest } from './daily-digest.js';
 import { runUrgentNag } from './urgent-nag.js';
 import { runMorningReminder, runHabitNudge, runWeeklySummary } from './family-crons.js';
+import { runDistillation } from './distillation.js';
 
 export function registerCrons(): void {
   // Daily digest at 8:00 AM Toronto, every day
@@ -44,6 +45,7 @@ export function registerCrons(): void {
     ['morning-reminder', '0 9 * * *',  runMorningReminder],
     ['habit-nudge',      '0 20 * * *', runHabitNudge],
     ['weekly-summary',   '0 18 * * 0', runWeeklySummary],
+    ['distillation',     '0 21 * * 0', runDistillation],
   ];
   for (const [name, pattern, fn] of jobs) {
     cron.schedule(

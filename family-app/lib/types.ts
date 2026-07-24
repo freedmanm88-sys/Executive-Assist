@@ -74,6 +74,24 @@ export interface FamilyHabit {
   done_today: boolean;
 }
 
+export interface FamilyProposal {
+  id: string;
+  kind: 'task' | 'event';
+  payload: {
+    title?: string;
+    notes?: string;
+    due_date?: string;
+    date?: string;
+    time?: string;
+    duration_min?: number;
+    location?: string;
+  };
+  subject: string | null;
+  sender_email: string | null;
+  status: 'pending' | 'accepted' | 'dismissed';
+  created_at: string;
+}
+
 export interface FeedItem {
   decision_id: string;
   decision: { classification: string; urgency_score?: number; [k: string]: unknown };

@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { requireSession } from '@/lib/auth';
-import { workerFetch } from '@/lib/worker';
+import { workerFetch, getUsers } from '@/lib/worker';
 import { fetchAllFeeds, type FeedConfig, type MergedEvent } from '@/lib/ics';
-import type { FamilyTask, FamilyEvent, FamilyListItem, FamilyList, FeedItem, FamilyHabit } from '@/lib/types';
+import type { FamilyTask, FamilyEvent, FamilyListItem, FamilyList, FeedItem, FamilyHabit, FamilyProposal } from '@/lib/types';
+import { Proposals } from '@/components/proposals';
 import { dayKey, todayKey, fmtTime, isOverdue } from '@/lib/dates';
 import { HomeHabits } from '@/components/home-habits';
 import { QuickAdd } from '@/components/quick-add';
@@ -14,7 +15,7 @@ export default async function HomePage() {
   const now = new Date();
   const in2days = new Date(Date.now() + 2 * 86400_000);
 
-  const [{ tasks }, { events }, listsData, { feed }, { settings }, { habits }] = await Promise.all([
+  const [{ tasks }, { events }, listsData, { feed }, { settings }, { habits }, { proposals }, users] = await Promise.all([
     workerFetch<{ tasks: FamilyTask[] }>('/family/tasks?status=open', { userId: session.uid }),
     workerFetch<{ events: FamilyEvent[] }>(
       `/family/events?from=${now.toISOString()}&to=${in2days.toISOString()}`,
@@ -24,6 +25,8 @@ export default async function HomePage() {
     workerFetch<{ feed: FeedItem[] }>('/family/feed?pending=1&actionable=1&limit=100', { userId: session.uid }),
     workerFetch<{ settings: Record<string, unknown> }>('/family/settings', { userId: session.uid }),
     workerFetch<{ habits: FamilyHabit[] }>('/family/habits', { userId: session.uid }),
+    workerFetch<{ proposals: FamilyProposal[] }>('/family/proposals', { userId: session.uid }),
+    getUsers(),
   ]);
 
   const feeds = (settings['ics_feeds'] as FeedConfig[] | undefined) ?? [];
@@ -65,6 +68,12 @@ export default async function HomePage() {
       </div>
 
       <QuickAdd />
+
+      <Proposals
+        proposals={proposals.filter((p) => p.status === 'pending')}
+        users={users.map((u) => ({ id: u.id, name: u.name }))}
+        myUserId={session.uid}
+      />
 
       <HomeHabits habits={habits} myUserId={session.uid} />
 

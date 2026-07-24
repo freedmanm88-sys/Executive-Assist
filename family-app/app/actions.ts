@@ -151,6 +151,24 @@ export async function archiveHabit(habitId: string): Promise<void> {
   revalidatePath('/');
 }
 
+// ---------- Email proposals --------------------------------------------------
+
+export async function resolveProposal(
+  id: string,
+  action: 'accept' | 'dismiss',
+  assignedTo: string | null,
+): Promise<void> {
+  const s = await requireSession();
+  await workerFetch(`/family/proposals/${id}/resolve`, {
+    method: 'POST',
+    userId: s.uid,
+    body: { action, assigned_to: assignedTo },
+  });
+  revalidatePath('/');
+  revalidatePath('/tasks');
+  revalidatePath('/calendar');
+}
+
 // ---------- Triage feedback --------------------------------------------------
 
 export interface FeedbackResult {

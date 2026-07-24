@@ -99,10 +99,54 @@ export async function createEvent(input: {
   revalidatePath('/');
 }
 
+export async function updateEvent(
+  id: string,
+  input: {
+    title?: string;
+    start_at?: string;
+    end_at?: string | null;
+    all_day?: boolean;
+    location?: string | null;
+    notes?: string | null;
+  },
+): Promise<void> {
+  const s = await requireSession();
+  await workerFetch(`/family/events/${id}`, { method: 'PATCH', userId: s.uid, body: input });
+  revalidatePath('/calendar');
+  revalidatePath('/');
+}
+
 export async function deleteEvent(id: string): Promise<void> {
   const s = await requireSession();
   await workerFetch(`/family/events/${id}`, { method: 'DELETE', userId: s.uid });
   revalidatePath('/calendar');
+  revalidatePath('/');
+}
+
+// ---------- Habits -----------------------------------------------------------
+
+export async function toggleHabit(habitId: string): Promise<void> {
+  const s = await requireSession();
+  await workerFetch(`/family/habits/${habitId}/toggle`, { method: 'POST', userId: s.uid });
+  revalidatePath('/habits');
+  revalidatePath('/');
+}
+
+export async function createHabit(name: string, targetPerWeek: number): Promise<void> {
+  const s = await requireSession();
+  await workerFetch('/family/habits', {
+    method: 'POST',
+    userId: s.uid,
+    body: { name, target_per_week: targetPerWeek, shared: true },
+  });
+  revalidatePath('/habits');
+  revalidatePath('/');
+}
+
+export async function archiveHabit(habitId: string): Promise<void> {
+  const s = await requireSession();
+  await workerFetch(`/family/habits/${habitId}`, { method: 'DELETE', userId: s.uid });
+  revalidatePath('/habits');
   revalidatePath('/');
 }
 

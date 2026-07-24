@@ -33,6 +33,12 @@
 3. In the deployed app → Settings: paste both Google Calendar secret ICS URLs
 4. Both phones: open the Vercel URL → Add to Home Screen
 
+## Session part 2 (same day — while blocked on vercel login)
+- **Habits/accountability shipped:** migration 07 (`habits.shared` + seeded 'Hit step goal' and '10-min exercise' for both users), worker endpoints (list w/ Toronto-week counts, create, toggle-today, archive), Habits tab (6-tab nav) with both members' shared habits + week progress bars, Home check-in pill strip with partner status. Verified: toggle/untoggle round-trip.
+- **Urgent-nag cron shipped:** 10/14/18 Toronto. First manual run sent 24 individual pings (old backlog) — fixed same session to the architecture-doc behavior: ONE consolidated message (max 10 listed) + auto-expire items unack'd >7 days (`ack_method='expired'`). Re-run: 24 expired, 0 pending, no ping. Manual trigger: `POST /cron/urgent-nag`.
+- **Event editing shipped:** pencil icon on family events → inline edit form (title/date/time/duration/all-day/location), verified create→edit→delete.
+- `/admin/migrate` now applies all embedded migrations in order (06, 07).
+
 ## Notes / follow-ups
 - Mark's users row email is `mark@sophaxconsulting.com`; login maps freedman.m88@gmail.com → that row (see IDENTITIES in `app/login/actions.ts`).
 - Demo item "Milk (2%)" + comment left in Grocery list.

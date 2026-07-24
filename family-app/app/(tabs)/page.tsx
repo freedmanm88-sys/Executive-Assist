@@ -2,8 +2,9 @@ import Link from 'next/link';
 import { requireSession } from '@/lib/auth';
 import { workerFetch } from '@/lib/worker';
 import { fetchAllFeeds, type FeedConfig, type MergedEvent } from '@/lib/ics';
-import type { FamilyTask, FamilyEvent, FamilyListItem, FamilyList, FeedItem } from '@/lib/types';
+import type { FamilyTask, FamilyEvent, FamilyListItem, FamilyList, FeedItem, FamilyHabit } from '@/lib/types';
 import { dayKey, todayKey, fmtTime, isOverdue } from '@/lib/dates';
+import { HomeHabits } from '@/components/home-habits';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export default async function HomePage() {
   const now = new Date();
   const in2days = new Date(Date.now() + 2 * 86400_000);
 
-  const [{ tasks }, { events }, listsData, { feed }, { settings }] = await Promise.all([
+  const [{ tasks }, { events }, listsData, { feed }, { settings }, { habits }] = await Promise.all([
     workerFetch<{ tasks: FamilyTask[] }>('/family/tasks?status=open', { userId: session.uid }),
     workerFetch<{ events: FamilyEvent[] }>(
       `/family/events?from=${now.toISOString()}&to=${in2days.toISOString()}`,
@@ -21,6 +22,7 @@ export default async function HomePage() {
     workerFetch<{ lists: FamilyList[]; items: FamilyListItem[] }>('/family/lists', { userId: session.uid }),
     workerFetch<{ feed: FeedItem[] }>('/family/feed?pending=1&limit=100', { userId: session.uid }),
     workerFetch<{ settings: Record<string, unknown> }>('/family/settings', { userId: session.uid }),
+    workerFetch<{ habits: FamilyHabit[] }>('/family/habits', { userId: session.uid }),
   ]);
 
   const feeds = (settings['ics_feeds'] as FeedConfig[] | undefined) ?? [];
@@ -60,6 +62,8 @@ export default async function HomePage() {
         <StatCard href="/lists" label="List items" value={groceryOutstanding} />
         <StatCard href="/inbox" label="To review" value={feed.length} alert={feed.length > 0} />
       </div>
+
+      <HomeHabits habits={habits} myUserId={session.uid} />
 
       <section>
         <h2 className="text-sm font-bold opacity-70 mb-1.5">Today</h2>

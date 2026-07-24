@@ -7,6 +7,7 @@ const TABS = [
   { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/tasks', label: 'Tasks', icon: CheckIcon },
   { href: '/lists', label: 'Lists', icon: ListIcon },
+  { href: '/habits', label: 'Habits', icon: FlameIcon },
   { href: '/calendar', label: 'Calendar', icon: CalendarIcon },
   { href: '/inbox', label: 'Inbox', icon: InboxIcon },
 ] as const;
@@ -15,7 +16,7 @@ export function BottomNav({ pendingCount }: { pendingCount: number }) {
   const pathname = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
-      <div className="mx-auto max-w-lg grid grid-cols-5">
+      <div className="mx-auto max-w-lg grid grid-cols-6">
         {TABS.map((t) => {
           const active = t.href === '/' ? pathname === '/' : pathname.startsWith(t.href);
           return (
@@ -60,6 +61,14 @@ function ListIcon({ className }: IconProps) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z" />
+    </svg>
+  );
+}
+function FlameIcon({ className }: IconProps) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" />
     </svg>
   );
 }

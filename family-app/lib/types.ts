@@ -58,6 +58,18 @@ export interface FamilyEvent {
   created_at: string;
 }
 
+export interface FamilyHabit {
+  id: string;
+  user_id: string;
+  owner_name: string | null;
+  name: string;
+  description: string | null;
+  target_per_week: number;
+  shared: boolean;
+  week_count: number;
+  done_today: boolean;
+}
+
 export interface FeedItem {
   decision_id: string;
   decision: { classification: string; urgency_score?: number; [k: string]: unknown };

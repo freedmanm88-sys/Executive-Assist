@@ -14,15 +14,22 @@ export function ListsView({
   lists,
   items,
   comments,
+  users = [],
+  myUserId,
 }: {
   lists: FamilyList[];
   items: FamilyListItem[];
   comments: ItemComment[];
+  users?: { id: string; name: string }[];
+  myUserId?: string;
 }) {
   const [activeListId, setActiveListId] = useState<string | null>(lists[0]?.id ?? null);
   const [showNewList, setShowNewList] = useState(false);
+  const [whoFilter, setWhoFilter] = useState<string | null>(null);
   const active = lists.find((l) => l.id === activeListId) ?? lists[0];
-  const listItems = items.filter((i) => i.list_id === active?.id);
+  const listItems = items.filter(
+    (i) => i.list_id === active?.id && (!whoFilter || i.created_by === whoFilter),
+  );
   const open = listItems.filter((i) => !i.done);
   const done = listItems.filter((i) => i.done).slice(0, 25);
   const commentsByItem = new Map<string, ItemComment[]>();
@@ -59,6 +66,30 @@ export function ListsView({
       </div>
 
       {showNewList && <NewListForm onDone={() => setShowNewList(false)} />}
+
+      {users.length > 1 && (
+        <div className="flex gap-2 -mt-1">
+          <button
+            onClick={() => setWhoFilter(null)}
+            className={`rounded-full px-3 py-1 text-xs font-medium border ${
+              whoFilter === null ? 'bg-neutral-800 dark:bg-neutral-200 text-white dark:text-neutral-900 border-transparent' : 'border-neutral-300 dark:border-neutral-700'
+            }`}
+          >
+            All
+          </button>
+          {users.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => setWhoFilter(whoFilter === u.id ? null : u.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium border ${
+                whoFilter === u.id ? 'bg-neutral-800 dark:bg-neutral-200 text-white dark:text-neutral-900 border-transparent' : 'border-neutral-300 dark:border-neutral-700'
+              }`}
+            >
+              Added by {u.id === myUserId ? 'me' : u.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {active && (
         <>

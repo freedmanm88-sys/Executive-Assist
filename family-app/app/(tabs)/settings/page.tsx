@@ -31,12 +31,7 @@ export default async function SettingsPage() {
           ⚙ Settings → pick the calendar → “Integrate calendar” → <i>Secret address
           in iCal format</i>. Events show up read-only in the app within ~5 minutes.
         </p>
-        <IcsFeedsForm
-          initial={[
-            { name: 'Mark', url: feeds.find((f) => f.name === 'Mark')?.url ?? '' },
-            { name: 'Ashley', url: feeds.find((f) => f.name === 'Ashley')?.url ?? '' },
-          ]}
-        />
+        <IcsFeedsForm initial={feeds} />
       </section>
 
       <section className="flex flex-col gap-2">

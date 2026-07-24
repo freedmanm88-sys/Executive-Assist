@@ -5,19 +5,29 @@ import type { FamilyTask } from '@/lib/types';
 import { TaskRow } from './task-row';
 import { NewTaskForm } from './new-task-form';
 
+type WhoFilter = 'all' | 'unassigned' | string; // string = a user id
+
 export function TasksView({
   tasks,
   users,
   categories,
+  myUserId,
 }: {
   tasks: FamilyTask[];
   users: { id: string; name: string }[];
   categories: string[];
+  myUserId: string;
 }) {
   const [catFilter, setCatFilter] = useState<string | null>(null);
+  const [whoFilter, setWhoFilter] = useState<WhoFilter>('all');
   const usersById = new Map(users.map((u) => [u.id, u.name]));
 
-  const filtered = catFilter ? tasks.filter((t) => t.category === catFilter) : tasks;
+  const byWho = tasks.filter((t) => {
+    if (whoFilter === 'all') return true;
+    if (whoFilter === 'unassigned') return !t.assigned_to;
+    return t.assigned_to === whoFilter;
+  });
+  const filtered = catFilter ? byWho.filter((t) => t.category === catFilter) : byWho;
   const open = filtered.filter((t) => t.status === 'open');
   const done = filtered.filter((t) => t.status === 'done').slice(0, 20);
   const usedCategories = [...new Set(tasks.map((t) => t.category).filter(Boolean))] as string[];
@@ -26,6 +36,25 @@ export function TasksView({
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-bold">Tasks</h1>
       <NewTaskForm users={users} categories={categories} />
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {(
+          [
+            { key: 'all' as const, label: 'Everyone' },
+            ...users.map((u) => ({ key: u.id, label: u.id === myUserId ? 'Mine' : `${u.name}'s` })),
+            { key: 'unassigned' as const, label: 'Anyone' },
+          ]
+        ).map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setWhoFilter(f.key)}
+            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border ${
+              whoFilter === f.key ? 'bg-neutral-800 dark:bg-neutral-200 text-white dark:text-neutral-900 border-transparent' : 'border-neutral-300 dark:border-neutral-700'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       {usedCategories.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           <button

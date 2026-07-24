@@ -21,6 +21,7 @@ export default async function TasksPage() {
       tasks={tasks}
       users={users.map((u) => ({ id: u.id, name: u.name }))}
       categories={categories}
+      myUserId={session.uid}
     />
   );
 }

@@ -3,9 +3,9 @@ import { requireSession } from '@/lib/auth';
 import { workerFetch } from '@/lib/worker';
 import { fetchAllFeeds, type FeedConfig, type MergedEvent } from '@/lib/ics';
 import type { FamilyEvent } from '@/lib/types';
-import { dayKey, todayKey, fmtDayLong, fmtTime } from '@/lib/dates';
+import { dayKey, todayKey, fmtDayLong } from '@/lib/dates';
 import { NewEventForm } from '@/components/new-event-form';
-import { EditableEvent } from '@/components/editable-event';
+import { CalendarList } from '@/components/calendar-list';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,6 @@ export default async function CalendarPage() {
     ...feedEvents,
   ].sort((a, b) => a.start.localeCompare(b.start));
 
-  const familyById = new Map(familyEvents.map((e) => [e.id, e]));
   const today = todayKey();
   const byDay = new Map<string, MergedEvent[]>();
   for (const ev of merged) {
@@ -51,7 +50,10 @@ export default async function CalendarPage() {
     arr.push(ev);
     byDay.set(key, arr);
   }
-  const days = [...byDay.keys()].sort();
+  const days = [...byDay.keys()].sort().map((key) => {
+    const events = byDay.get(key) ?? [];
+    return { key, label: events[0] ? fmtDayLong(events[0].start) : key, events };
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,44 +66,7 @@ export default async function CalendarPage() {
           to see them here.
         </p>
       )}
-      {days.length === 0 && <p className="text-sm opacity-60 py-4 text-center">Nothing coming up.</p>}
-      {days.map((key) => {
-        const events = byDay.get(key) ?? [];
-        const first = events[0];
-        return (
-          <section key={key}>
-            <h2 className={`text-sm font-bold mb-1.5 ${key === today ? 'text-indigo-500' : 'opacity-70'}`}>
-              {key === today ? 'Today — ' : ''}{first ? fmtDayLong(first.start) : key}
-            </h2>
-            <div className="flex flex-col gap-1.5">
-              {events.map((ev) => {
-                const familyEvent = ev.editable ? familyById.get(ev.id) : undefined;
-                if (familyEvent) return <EditableEvent key={ev.id} event={familyEvent} />;
-                return (
-                  <div
-                    key={ev.id}
-                    className="flex items-center gap-3 rounded-xl border border-neutral-200 dark:border-neutral-800 px-3 py-2"
-                  >
-                    <span
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                        ev.source.toLowerCase().startsWith('mark') ? 'bg-emerald-500' : 'bg-pink-500'
-                      }`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{ev.title}</p>
-                      <p className="text-xs opacity-60">
-                        {ev.allDay ? 'All day' : `${fmtTime(ev.start)}${ev.end ? `–${fmtTime(ev.end)}` : ''}`}
-                        {ev.location ? ` · ${ev.location}` : ''}
-                        {` · ${ev.source}`}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+      <CalendarList days={days} familyEvents={familyEvents} today={today} />
     </div>
   );
 }

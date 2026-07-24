@@ -9,6 +9,7 @@
 import cron from 'node-cron';
 import { runDailyDigest } from './daily-digest.js';
 import { runUrgentNag } from './urgent-nag.js';
+import { runMorningReminder, runHabitNudge, runWeeklySummary } from './family-crons.js';
 
 export function registerCrons(): void {
   // Daily digest at 8:00 AM Toronto, every day
@@ -38,5 +39,25 @@ export function registerCrons(): void {
     { timezone: 'America/Toronto' },
   );
 
-  console.log('[cron] registered: daily-digest @ 0 8, urgent-nag @ 0 10,14,18 America/Toronto');
+  // Family app pushes: morning tasks, evening habit nudge, Sunday weekly summary
+  const jobs: [string, string, () => Promise<unknown>][] = [
+    ['morning-reminder', '0 9 * * *',  runMorningReminder],
+    ['habit-nudge',      '0 20 * * *', runHabitNudge],
+    ['weekly-summary',   '0 18 * * 0', runWeeklySummary],
+  ];
+  for (const [name, pattern, fn] of jobs) {
+    cron.schedule(
+      pattern,
+      async () => {
+        try {
+          await fn();
+        } catch (err) {
+          console.error(`[cron:${name}] failed:`, err);
+        }
+      },
+      { timezone: 'America/Toronto' },
+    );
+  }
+
+  console.log('[cron] registered: daily-digest @8, urgent-nag @10/14/18, morning @9, nudge @20, weekly Sun@18 (America/Toronto)');
 }

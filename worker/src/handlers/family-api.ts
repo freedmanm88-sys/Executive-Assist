@@ -25,7 +25,10 @@ import {
 import { MIGRATION_06_SQL, MIGRATION_06_NAME } from '../migrations/06-family-app.js';
 import { MIGRATION_07_SQL, MIGRATION_07_NAME } from '../migrations/07-habits-shared.js';
 import { MIGRATION_08_SQL, MIGRATION_08_NAME } from '../migrations/08-push-subscriptions.js';
+import { MIGRATION_09_SQL, MIGRATION_09_NAME } from '../migrations/09-task-meta.js';
 import { getVapidKeys, sendPushToUser } from '../push.js';
+import { setPin, verifyPin } from '../pin.js';
+import { runAssistant } from './family-assistant.js';
 
 // ---------- Family member validation (cached) --------------------------------
 
@@ -75,6 +78,7 @@ const TaskCreateSchema = z.object({
   assigned_to: uuid.nullish(),
   due_at:      z.string().datetime({ offset: true }).nullish(),
   priority:    z.number().int().min(1).max(5).nullish(),
+  category:    z.string().max(60).nullish(),
 });
 
 const TaskPatchSchema = z.object({
@@ -84,6 +88,7 @@ const TaskPatchSchema = z.object({
   due_at:      z.string().datetime({ offset: true }).nullable().optional(),
   priority:    z.number().int().min(1).max(5).optional(),
   status:      z.enum(['open', 'done']).optional(),
+  category:    z.string().max(60).nullable().optional(),
 });
 
 const ListCreateSchema = z.object({
@@ -191,9 +196,9 @@ familyRouter.post('/tasks', asyncMw(async (req, res) => {
   const uid = familyUserId(res);
   const row = await withUserContext(uid, async (client) => {
     const { rows } = await client.query(
-      `INSERT INTO family_tasks (title, notes, assigned_to, due_at, priority, created_by)
-       VALUES ($1, $2, $3, $4, COALESCE($5, 3), $6) RETURNING *`,
-      [body.title, body.notes ?? null, body.assigned_to ?? null, body.due_at ?? null, body.priority ?? null, uid],
+      `INSERT INTO family_tasks (title, notes, assigned_to, due_at, priority, category, created_by)
+       VALUES ($1, $2, $3, $4, COALESCE($5, 3), $6, $7) RETURNING *`,
+      [body.title, body.notes ?? null, body.assigned_to ?? null, body.due_at ?? null, body.priority ?? null, body.category ?? null, uid],
     );
     return rows[0];
   });
@@ -214,6 +219,7 @@ familyRouter.patch('/tasks/:id', asyncMw(async (req, res) => {
     if (body.assigned_to !== undefined) push('assigned_to', body.assigned_to);
     if (body.due_at !== undefined)      push('due_at', body.due_at);
     if (body.priority !== undefined)    push('priority', body.priority);
+    if (body.category !== undefined)    push('category', body.category);
     if (body.status !== undefined) {
       push('status', body.status);
       if (body.status === 'done') {
@@ -589,6 +595,36 @@ familyRouter.post('/feedback', asyncMw(async (req, res) => {
   res.json({ status: 'recorded', feedback: 'adjusted', parsed });
 }));
 
+// --- PIN management ----------------------------------------------------------
+
+const PinBody = z.object({ pin: z.string().min(4).max(12) });
+
+/** 'ok' | 'wrong' | 'no_pin_set' — app falls back to env PIN on no_pin_set. */
+familyRouter.post('/pin/verify', asyncMw(async (req, res) => {
+  const { pin } = PinBody.parse(req.body);
+  const result = await verifyPin(familyUserId(res), pin);
+  res.json({ result });
+}));
+
+familyRouter.post('/pin/set', asyncMw(async (req, res) => {
+  const { pin } = PinBody.parse(req.body);
+  await setPin(familyUserId(res), pin);
+  res.json({ set: true });
+}));
+
+// --- Quick-add assistant -----------------------------------------------------
+
+familyRouter.post('/assistant', asyncMw(async (req, res) => {
+  const { text } = z.object({ text: z.string().min(1).max(2000) }).parse(req.body);
+  const members = await getFamilyMembers();
+  const result = await runAssistant(
+    familyUserId(res),
+    members.map((m) => ({ id: m.id, name: m.full_name ?? m.email.split('@')[0] ?? '?' })),
+    text,
+  );
+  res.json(result);
+}));
+
 // --- Web push ----------------------------------------------------------------
 
 const PushSubscribeSchema = z.object({
@@ -672,6 +708,7 @@ export async function runMigrations(_req: Request, res: Response): Promise<void>
     { name: MIGRATION_06_NAME, sql: MIGRATION_06_SQL },
     { name: MIGRATION_07_NAME, sql: MIGRATION_07_SQL },
     { name: MIGRATION_08_NAME, sql: MIGRATION_08_SQL },
+    { name: MIGRATION_09_NAME, sql: MIGRATION_09_SQL },
   ];
   const client = await pool.connect();
   const applied: string[] = [];

@@ -132,6 +132,16 @@ const SettingsPutSchema = z.record(z.string().min(1).max(100), z.unknown());
 // ---------- Router -----------------------------------------------------------
 
 export const familyRouter = Router();
+
+// User directory — registered BEFORE requireFamilyUser because the app's login
+// screen needs it to map emails → ids. Still behind X-Internal-Auth.
+familyRouter.get('/users', asyncMw(async (_req, res) => {
+  const members = await getFamilyMembers();
+  res.json({
+    users: members.map((m) => ({ id: m.id, email: m.email, name: m.full_name ?? m.email.split('@')[0] })),
+  });
+}));
+
 familyRouter.use(asyncMw(requireFamilyUser));
 
 // --- Bootstrap ---------------------------------------------------------------

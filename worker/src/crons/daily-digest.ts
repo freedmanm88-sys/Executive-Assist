@@ -9,6 +9,7 @@
 import { withUserContext } from '../db.js';
 import { anthropic, DEFAULT_MODEL } from '../claude.js';
 import { sendMessage } from '../telegram.js';
+import { sendPushToUser } from '../push.js';
 import { config } from '../config.js';
 
 // ---------- Data shapes ------------------------------------------------------
@@ -258,6 +259,14 @@ export async function runDailyDigest(opts: RunDailyDigestOptions = {}): Promise<
   // Send to Telegram. We don't get message_id back from our minimal sendMessage,
   // so pass null. Could enhance to capture it later.
   await sendMessage(summary, { disablePreview: true });
+
+  // Family app push — first line of the digest as the body
+  await sendPushToUser(userId, {
+    title: 'Morning digest',
+    body:  summary.split('\n').find((l) => l.trim()) ?? 'Your daily digest is ready.',
+    url:   '/',
+    tag:   'daily-digest',
+  });
 
   await saveDigestRun(userId, periodStart, periodEnd, summary, data, null);
 

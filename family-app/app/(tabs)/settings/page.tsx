@@ -3,6 +3,7 @@ import { workerFetch } from '@/lib/worker';
 import type { FeedConfig } from '@/lib/ics';
 import { IcsFeedsForm } from '@/components/ics-feeds-form';
 import { LogoutButton } from '@/components/logout-button';
+import { PushToggle } from '@/components/push-toggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,15 @@ export default async function SettingsPage() {
             { name: 'Ashley', url: feeds.find((f) => f.name === 'Ashley')?.url ?? '' },
           ]}
         />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Notifications</h2>
+        <p className="text-sm opacity-70">
+          Get urgent-email alerts, the morning digest, and reminders as real
+          notifications on this device.
+        </p>
+        <PushToggle />
       </section>
 
       <section className="flex flex-col gap-2">

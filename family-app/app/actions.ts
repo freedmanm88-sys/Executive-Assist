@@ -180,6 +180,47 @@ export async function sendFeedback(
   return result;
 }
 
+// ---------- Web push ---------------------------------------------------------
+
+export async function getVapidPublicKey(): Promise<string> {
+  const s = await requireSession();
+  const { publicKey } = await workerFetch<{ publicKey: string }>(
+    '/family/push/vapid-public-key',
+    { userId: s.uid },
+  );
+  return publicKey;
+}
+
+export async function savePushSubscription(subscription: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}): Promise<void> {
+  const s = await requireSession();
+  await workerFetch('/family/push/subscribe', {
+    method: 'POST',
+    userId: s.uid,
+    body: { subscription },
+  });
+}
+
+export async function removePushSubscription(endpoint: string): Promise<void> {
+  const s = await requireSession();
+  await workerFetch('/family/push/unsubscribe', {
+    method: 'POST',
+    userId: s.uid,
+    body: { endpoint },
+  });
+}
+
+export async function sendTestPush(): Promise<number> {
+  const s = await requireSession();
+  const { sent } = await workerFetch<{ sent: number }>('/family/push/test', {
+    method: 'POST',
+    userId: s.uid,
+  });
+  return sent;
+}
+
 // ---------- Settings ---------------------------------------------------------
 
 export async function saveIcsFeeds(feeds: { name: string; url: string }[]): Promise<void> {

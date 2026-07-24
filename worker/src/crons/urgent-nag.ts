@@ -15,6 +15,7 @@
 
 import { withUserContext } from '../db.js';
 import { sendMessage } from '../telegram.js';
+import { sendPushToUser } from '../push.js';
 import { config } from '../config.js';
 
 const EXPIRE_AFTER_DAYS = 7;
@@ -65,6 +66,13 @@ export async function runUrgentNag(): Promise<{ expired: number; pending: number
   lines.push('_Reply on the original alert or review in the app to clear these._');
 
   await sendMessage(lines.join('\n'), { parseMode: 'Markdown', disablePreview: true });
+
+  await sendPushToUser(userId, {
+    title: `${rows.length} urgent email${rows.length === 1 ? '' : 's'} still waiting`,
+    body:  listed.map((r) => r.subject ?? '(no subject)').join(' · '),
+    url:   '/inbox',
+    tag:   'urgent-nag',
+  });
 
   await withUserContext(userId, (client) =>
     client.query(

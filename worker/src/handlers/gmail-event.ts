@@ -17,6 +17,7 @@ import { withUserContext } from '../db.js';
 import { classifyEmail } from '../classifiers/email-triage.js';
 import type { ClassifyResult } from '../classifiers/email-triage.js';
 import { sendMessage, escapeMarkdown } from '../telegram.js';
+import { sendPushToUser } from '../push.js';
 import { config } from '../config.js';
 
 // ---------- Request schema ---------------------------------------------------
@@ -368,6 +369,14 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
         { text: '❌ Wrong',   callback_data: `fb:wrong:${decisionId}` },
         { text: '✏️ Adjust',  callback_data: `fb:adjust:${decisionId}` },
       ]],
+    });
+
+    // Family app push — best-effort, never blocks the Telegram path
+    await sendPushToUser(userId, {
+      title: `🚨 Urgent: ${headers.subject}`,
+      body:  `${senderDisplay} — ${classification.reasoning}`,
+      url:   '/inbox',
+      tag:   `urgent-${triageId}`,
     });
   }
 

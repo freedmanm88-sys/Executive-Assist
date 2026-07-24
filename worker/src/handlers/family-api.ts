@@ -24,6 +24,8 @@ import {
 } from '../feedback-core.js';
 import { MIGRATION_06_SQL, MIGRATION_06_NAME } from '../migrations/06-family-app.js';
 import { MIGRATION_07_SQL, MIGRATION_07_NAME } from '../migrations/07-habits-shared.js';
+import { MIGRATION_08_SQL, MIGRATION_08_NAME } from '../migrations/08-push-subscriptions.js';
+import { getVapidKeys, sendPushToUser } from '../push.js';
 
 // ---------- Family member validation (cached) --------------------------------
 
@@ -587,6 +589,53 @@ familyRouter.post('/feedback', asyncMw(async (req, res) => {
   res.json({ status: 'recorded', feedback: 'adjusted', parsed });
 }));
 
+// --- Web push ----------------------------------------------------------------
+
+const PushSubscribeSchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().url(),
+    keys: z.object({ p256dh: z.string(), auth: z.string() }),
+  }),
+  user_agent: z.string().max(300).nullish(),
+});
+
+familyRouter.get('/push/vapid-public-key', asyncMw(async (_req, res) => {
+  const { publicKey } = await getVapidKeys();
+  res.json({ publicKey });
+}));
+
+familyRouter.post('/push/subscribe', asyncMw(async (req, res) => {
+  const body = PushSubscribeSchema.parse(req.body);
+  const uid = familyUserId(res);
+  await withUserContext(uid, (client) =>
+    client.query(
+      `INSERT INTO push_subscriptions (user_id, endpoint, keys, user_agent)
+       VALUES ($1::uuid, $2, $3, $4)
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, keys = EXCLUDED.keys`,
+      [uid, body.subscription.endpoint, JSON.stringify(body.subscription.keys), body.user_agent ?? null],
+    ),
+  );
+  res.status(201).json({ subscribed: true });
+}));
+
+familyRouter.post('/push/unsubscribe', asyncMw(async (req, res) => {
+  const endpoint = z.object({ endpoint: z.string().url() }).parse(req.body).endpoint;
+  await withUserContext(familyUserId(res), (client) =>
+    client.query(`DELETE FROM push_subscriptions WHERE endpoint = $1`, [endpoint]),
+  );
+  res.json({ unsubscribed: true });
+}));
+
+familyRouter.post('/push/test', asyncMw(async (_req, res) => {
+  const sent = await sendPushToUser(familyUserId(res), {
+    title: 'Freedman HQ',
+    body: 'Push notifications are working on this device. 🎉',
+    url: '/',
+    tag: 'test',
+  });
+  res.json({ sent });
+}));
+
 // --- Settings ----------------------------------------------------------------
 
 familyRouter.get('/settings', asyncMw(async (_req, res) => {
@@ -622,6 +671,7 @@ export async function runMigrations(_req: Request, res: Response): Promise<void>
   const migrations = [
     { name: MIGRATION_06_NAME, sql: MIGRATION_06_SQL },
     { name: MIGRATION_07_NAME, sql: MIGRATION_07_SQL },
+    { name: MIGRATION_08_NAME, sql: MIGRATION_08_SQL },
   ];
   const client = await pool.connect();
   const applied: string[] = [];

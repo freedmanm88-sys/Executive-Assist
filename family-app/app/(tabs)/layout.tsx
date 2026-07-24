@@ -10,7 +10,7 @@ export default async function TabsLayout({ children }: { children: React.ReactNo
   let pendingCount = 0;
   try {
     const { feed } = await workerFetch<{ feed: unknown[] }>(
-      '/family/feed?pending=1&limit=100',
+      '/family/feed?pending=1&actionable=1&limit=100',
       { userId: session.uid },
     );
     pendingCount = feed.length;

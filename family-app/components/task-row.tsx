@@ -5,10 +5,11 @@ import { toggleTask, deleteTask } from '@/app/actions';
 import type { FamilyTask } from '@/lib/types';
 import { relativeDay, isOverdue } from '@/lib/dates';
 
-export function TaskRow({ task }: { task: FamilyTask }) {
+export function TaskRow({ task, usersById }: { task: FamilyTask; usersById?: Map<string, string> }) {
   const [pending, startTransition] = useTransition();
   const done = task.status === 'done';
   const overdue = !done && isOverdue(task.due_at);
+  const completedByName = done && task.completed_by ? usersById?.get(task.completed_by) : null;
 
   return (
     <div
@@ -30,7 +31,7 @@ export function TaskRow({ task }: { task: FamilyTask }) {
       <div className="flex-1 min-w-0">
         <p className={`font-medium ${done ? 'line-through' : ''}`}>{task.title}</p>
         {task.notes && <p className="text-sm opacity-60 whitespace-pre-wrap">{task.notes}</p>}
-        <div className="flex flex-wrap gap-x-3 text-xs mt-0.5 opacity-70">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mt-0.5 opacity-70">
           {task.due_at && (
             <span className={overdue ? 'text-red-500 font-semibold opacity-100' : ''}>
               {overdue ? '⚠ ' : ''}{relativeDay(task.due_at)}
@@ -38,6 +39,14 @@ export function TaskRow({ task }: { task: FamilyTask }) {
           )}
           {task.assigned_to_name && <span>→ {task.assigned_to_name}</span>}
           {task.priority === 1 && <span className="text-orange-500 font-semibold">high</span>}
+          {task.category && (
+            <span className="rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 font-medium">
+              {task.category}
+            </span>
+          )}
+          {task.source === 'assistant' && <span title="Added via quick-add">✨</span>}
+          {task.source?.startsWith('email') && <span title="From an email">📧</span>}
+          {completedByName && <span className="text-green-600 dark:text-green-400">✓ by {completedByName}</span>}
         </div>
       </div>
       <button

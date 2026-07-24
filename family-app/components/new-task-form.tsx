@@ -4,7 +4,13 @@ import { useRef, useState, useTransition } from 'react';
 import { createTask } from '@/app/actions';
 import { TZ } from '@/lib/dates';
 
-export function NewTaskForm({ users }: { users: { id: string; name: string }[] }) {
+export function NewTaskForm({
+  users,
+  categories = [],
+}: {
+  users: { id: string; name: string }[];
+  categories?: string[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const [pending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
@@ -14,6 +20,7 @@ export function NewTaskForm({ users }: { users: { id: string; name: string }[] }
     if (!title) return;
     const dueDate = String(formData.get('due') ?? '');
     const assigned = String(formData.get('assigned') ?? '');
+    const category = String(formData.get('category') ?? '');
     const high = formData.get('high') === 'on';
     startTransition(async () => {
       await createTask({
@@ -23,6 +30,7 @@ export function NewTaskForm({ users }: { users: { id: string; name: string }[] }
         due_at: dueDate ? torontoEndOfDay(dueDate) : null,
         assigned_to: assigned || null,
         priority: high ? 1 : 3,
+        category: category || null,
       });
       formRef.current?.reset();
       setExpanded(false);
@@ -64,6 +72,17 @@ export function NewTaskForm({ users }: { users: { id: string; name: string }[] }
                 ))}
               </select>
             </label>
+            {categories.length > 0 && (
+              <label className="flex items-center gap-1.5">
+                <span className="opacity-60">Category</span>
+                <select name="category" className="bg-transparent border border-neutral-300 dark:border-neutral-700 rounded-md px-2 py-1 dark:bg-neutral-950">
+                  <option value="">None</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="flex items-center gap-1.5">
               <input name="high" type="checkbox" className="accent-orange-500" />
               <span className="opacity-60">High priority</span>

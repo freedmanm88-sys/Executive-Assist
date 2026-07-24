@@ -17,6 +17,7 @@ export async function createTask(input: {
   assigned_to?: string | null;
   due_at?: string | null;
   priority?: number;
+  category?: string | null;
 }): Promise<void> {
   const s = await requireSession();
   await workerFetch('/family/tasks', { method: 'POST', userId: s.uid, body: input });
@@ -177,6 +178,61 @@ export async function sendFeedback(
   });
   revalidatePath('/inbox');
   revalidatePath('/');
+  return result;
+}
+
+export async function saveTaskCategories(categories: string[]): Promise<void> {
+  const s = await requireSession();
+  await workerFetch('/family/settings', {
+    method: 'PUT',
+    userId: s.uid,
+    body: { task_categories: categories.map((c) => c.trim()).filter(Boolean).slice(0, 20) },
+  });
+  revalidatePath('/tasks');
+  revalidatePath('/settings');
+}
+
+// ---------- PIN change -------------------------------------------------------
+
+export async function changePin(
+  currentPin: string,
+  newPin: string,
+): Promise<{ error?: string; ok?: boolean }> {
+  const s = await requireSession();
+  if (!/^\d{4,12}$/.test(newPin)) return { error: 'New PIN must be 4–12 digits.' };
+
+  const { result } = await workerFetch<{ result: 'ok' | 'wrong' | 'no_pin_set' }>(
+    '/family/pin/verify',
+    { method: 'POST', userId: s.uid, body: { pin: currentPin } },
+  );
+  if (result === 'wrong') return { error: 'Current PIN is wrong.' };
+  if (result === 'no_pin_set') {
+    // Still on the env-var PIN — verify against it before allowing the change.
+    const users = await import('@/lib/worker').then((m) => m.getUsers());
+    const me = users.find((u) => u.id === s.uid);
+    const envName = me?.email === 'awronzberg@gmail.com' ? 'ASHLEY_PIN' : 'MARK_PIN';
+    const expected = process.env[envName] ?? '';
+    if (currentPin !== expected) return { error: 'Current PIN is wrong.' };
+  }
+
+  await workerFetch('/family/pin/set', { method: 'POST', userId: s.uid, body: { pin: newPin } });
+  return { ok: true };
+}
+
+// ---------- Quick-add assistant ----------------------------------------------
+
+export async function askAssistant(text: string): Promise<{ reply: string; actions: string[] }> {
+  const s = await requireSession();
+  const result = await workerFetch<{ reply: string; actions: string[] }>('/family/assistant', {
+    method: 'POST',
+    userId: s.uid,
+    body: { text },
+  });
+  revalidatePath('/');
+  revalidatePath('/tasks');
+  revalidatePath('/lists');
+  revalidatePath('/calendar');
+  revalidatePath('/habits');
   return result;
 }
 

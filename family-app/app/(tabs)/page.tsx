@@ -5,6 +5,7 @@ import { fetchAllFeeds, type FeedConfig, type MergedEvent } from '@/lib/ics';
 import type { FamilyTask, FamilyEvent, FamilyListItem, FamilyList, FeedItem, FamilyHabit } from '@/lib/types';
 import { dayKey, todayKey, fmtTime, isOverdue } from '@/lib/dates';
 import { HomeHabits } from '@/components/home-habits';
+import { QuickAdd } from '@/components/quick-add';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export default async function HomePage() {
       { userId: session.uid },
     ),
     workerFetch<{ lists: FamilyList[]; items: FamilyListItem[] }>('/family/lists', { userId: session.uid }),
-    workerFetch<{ feed: FeedItem[] }>('/family/feed?pending=1&limit=100', { userId: session.uid }),
+    workerFetch<{ feed: FeedItem[] }>('/family/feed?pending=1&actionable=1&limit=100', { userId: session.uid }),
     workerFetch<{ settings: Record<string, unknown> }>('/family/settings', { userId: session.uid }),
     workerFetch<{ habits: FamilyHabit[] }>('/family/habits', { userId: session.uid }),
   ]);
@@ -62,6 +63,8 @@ export default async function HomePage() {
         <StatCard href="/lists" label="List items" value={groceryOutstanding} />
         <StatCard href="/inbox" label="To review" value={feed.length} alert={feed.length > 0} />
       </div>
+
+      <QuickAdd />
 
       <HomeHabits habits={habits} myUserId={session.uid} />
 

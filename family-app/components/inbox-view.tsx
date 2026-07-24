@@ -23,9 +23,16 @@ const CLASS_STYLE: Record<string, string> = {
   spam:         'bg-neutral-500/15 text-neutral-500',
 };
 
+const ACTIONABLE = new Set(['urgent', 'action', 'reply_needed', 'calendar']);
+
 export function InboxView({ feed }: { feed: FeedItem[] }) {
+  // Default: actionable-and-unreviewed only. Newsletters/bot noise lives
+  // under "Everything" — reviewing those is optional training, not homework.
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
-  const shown = filter === 'pending' ? feed.filter((f) => !f.feedback) : feed;
+  const shown =
+    filter === 'pending'
+      ? feed.filter((f) => !f.feedback && ACTIONABLE.has(f.classification))
+      : feed;
 
   return (
     <div className="flex flex-col gap-4">
@@ -38,13 +45,14 @@ export function InboxView({ feed }: { feed: FeedItem[] }) {
               onClick={() => setFilter(f)}
               className={`px-3 py-1 font-medium ${filter === f ? 'bg-indigo-600 text-white' : ''}`}
             >
-              {f === 'pending' ? 'Needs review' : 'All'}
+              {f === 'pending' ? 'Needs review' : 'Everything'}
             </button>
           ))}
         </div>
       </div>
       <p className="text-xs opacity-60 -mt-2">
-        How the assistant triaged your email. Correct it here — it learns from every answer.
+        Only urgent / action / reply-needed / calendar emails show here by default.
+        Correct anything wrong — every answer becomes a rule or preference on Sunday night.
       </p>
       {shown.length === 0 && (
         <p className="text-sm opacity-60 py-6 text-center">

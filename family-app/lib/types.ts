@@ -12,6 +12,9 @@ export interface FamilyTask {
   created_by: string;
   created_by_name: string | null;
   completed_at: string | null;
+  completed_by: string | null;
+  category: string | null;
+  source: string | null;
   created_at: string;
 }
 
@@ -33,6 +36,7 @@ export interface FamilyListItem {
   done_by_name: string | null;
   created_by: string | null;
   created_by_name: string | null;
+  source: string | null;
   created_at: string;
 }
 

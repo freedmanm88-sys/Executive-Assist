@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createSessionValue, SESSION_COOKIE } from '@/lib/session';
-import { getUsers } from '@/lib/worker';
+import { getUsers, workerFetch } from '@/lib/worker';
 import { timingSafeEqual } from 'node:crypto';
 
 /**
@@ -38,12 +38,22 @@ export async function login(
 
   const identity = IDENTITIES[email];
   if (!identity) return { error: 'Unknown user.' };
-  const expected = process.env[identity.env] ?? identity.fallback;
-  if (!pinMatches(expected, pin)) return { error: 'Wrong PIN.' };
 
   const users = await getUsers();
   const user = users.find((u) => identity.dbEmails.includes(u.email.toLowerCase()));
   if (!user) return { error: 'User not found in the database yet — run the migration first.' };
+
+  // Prefer the user-set PIN (hashed, stored via the app's Settings page);
+  // fall back to the env-var PIN until one has been set.
+  const { result } = await workerFetch<{ result: 'ok' | 'wrong' | 'no_pin_set' }>(
+    '/family/pin/verify',
+    { method: 'POST', userId: user.id, body: { pin } },
+  );
+  if (result === 'wrong') return { error: 'Wrong PIN.' };
+  if (result === 'no_pin_set') {
+    const expected = process.env[identity.env] ?? identity.fallback;
+    if (!pinMatches(expected, pin)) return { error: 'Wrong PIN.' };
+  }
 
   const jar = await cookies();
   jar.set(SESSION_COOKIE, await createSessionValue(user.id, user.name), {

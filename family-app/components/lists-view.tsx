@@ -166,7 +166,14 @@ function ItemRow({ item, comments }: { item: FamilyListItem; comments: ItemComme
             </svg>
           )}
         </button>
-        <span className={`flex-1 ${item.done ? 'line-through opacity-60' : ''}`}>{item.text}</span>
+        <span className={`flex-1 ${item.done ? 'line-through opacity-60' : ''}`}>
+          {item.text}
+          {item.source === 'assistant' && <span className="ml-1.5 text-xs" title="Added via quick-add">✨</span>}
+          {item.source?.startsWith('email') && <span className="ml-1.5 text-xs" title="From an email">📧</span>}
+          {item.done && item.done_by_name && (
+            <span className="ml-1.5 text-xs text-green-600 dark:text-green-400 no-underline">✓ {item.done_by_name}</span>
+          )}
+        </span>
         <button
           onClick={() => setShowThread((v) => !v)}
           className={`text-xs px-2 py-1 rounded-md ${comments.length > 0 ? 'text-indigo-500 font-semibold' : 'text-neutral-400'}`}

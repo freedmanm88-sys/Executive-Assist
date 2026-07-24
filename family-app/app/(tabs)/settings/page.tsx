@@ -4,6 +4,8 @@ import type { FeedConfig } from '@/lib/ics';
 import { IcsFeedsForm } from '@/components/ics-feeds-form';
 import { LogoutButton } from '@/components/logout-button';
 import { PushToggle } from '@/components/push-toggle';
+import { ChangePinForm } from '@/components/change-pin-form';
+import { CategoriesForm } from '@/components/categories-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,9 @@ export default async function SettingsPage() {
     { userId: session.uid },
   );
   const feeds = (settings['ics_feeds'] as FeedConfig[] | undefined) ?? [];
+  const categories = Array.isArray(settings['task_categories'])
+    ? (settings['task_categories'] as string[])
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -35,6 +40,12 @@ export default async function SettingsPage() {
       </section>
 
       <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Task categories</h2>
+        <p className="text-sm opacity-70">Used to tag and filter tasks (Family, Logan, Jackson…). Edit freely.</p>
+        <CategoriesForm initial={categories} />
+      </section>
+
+      <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Notifications</h2>
         <p className="text-sm opacity-70">
           Get urgent-email alerts, the morning digest, and reminders as real
@@ -46,6 +57,7 @@ export default async function SettingsPage() {
       <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Signed in as</h2>
         <p className="text-sm opacity-70">{session.name}</p>
+        <ChangePinForm />
         <LogoutButton />
       </section>
     </div>

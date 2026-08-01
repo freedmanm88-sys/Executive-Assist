@@ -763,16 +763,39 @@ familyRouter.post('/push/test', asyncMw(async (_req, res) => {
 
 // --- Settings ----------------------------------------------------------------
 
+/**
+ * Settings rows the app must never see or write.
+ * - `vapid_keys` holds the web-push PRIVATE key. The app only ever needs the
+ *   public half, which it gets from /family/push/vapid-public-key. Letting it
+ *   through here would put a signing key one careless prop-spread away from
+ *   shipping to a browser, and an overwrite would silently break push on every
+ *   subscribed device.
+ * - `ingest_canary` is the canary's own alert state — server-owned bookkeeping;
+ *   a write from the app could permanently silence the alert.
+ */
+const SERVER_ONLY_SETTING_KEYS = new Set(['vapid_keys', 'ingest_canary']);
+
 familyRouter.get('/settings', asyncMw(async (_req, res) => {
   const rows = await withUserContext(familyUserId(res), async (client) => {
     const { rows } = await client.query(`SELECT key, value FROM family_settings`);
     return rows;
   });
-  res.json({ settings: Object.fromEntries(rows.map((r: { key: string; value: unknown }) => [r.key, r.value])) });
+  res.json({
+    settings: Object.fromEntries(
+      rows
+        .filter((r: { key: string }) => !SERVER_ONLY_SETTING_KEYS.has(r.key))
+        .map((r: { key: string; value: unknown }) => [r.key, r.value]),
+    ),
+  });
 }));
 
 familyRouter.put('/settings', asyncMw(async (req, res) => {
   const body = SettingsPutSchema.parse(req.body);
+  const blocked = Object.keys(body).filter((k) => SERVER_ONLY_SETTING_KEYS.has(k));
+  if (blocked.length > 0) {
+    res.status(403).json({ error: 'forbidden_setting_key', keys: blocked });
+    return;
+  }
   await withUserContext(familyUserId(res), async (client) => {
     for (const [key, value] of Object.entries(body)) {
       await client.query(

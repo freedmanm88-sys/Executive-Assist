@@ -11,6 +11,7 @@ import { runDailyDigest } from './daily-digest.js';
 import { runUrgentNag } from './urgent-nag.js';
 import { runMorningReminder, runHabitNudge, runWeeklySummary } from './family-crons.js';
 import { runDistillation } from './distillation.js';
+import { runIngestCanary } from './ingest-canary.js';
 
 export function registerCrons(): void {
   // Daily digest at 8:00 AM Toronto, every day
@@ -42,10 +43,13 @@ export function registerCrons(): void {
 
   // Family app pushes: morning tasks, evening habit nudge, Sunday weekly summary
   const jobs: [string, string, () => Promise<unknown>][] = [
-    ['morning-reminder', '0 9 * * *',  runMorningReminder],
-    ['habit-nudge',      '0 20 * * *', runHabitNudge],
-    ['weekly-summary',   '0 18 * * 0', runWeeklySummary],
-    ['distillation',     '0 21 * * 0', runDistillation],
+    ['morning-reminder', '0 9 * * *',    runMorningReminder],
+    ['habit-nudge',      '0 20 * * *',   runHabitNudge],
+    ['weekly-summary',   '0 18 * * 0',   runWeeklySummary],
+    ['distillation',     '0 21 * * 0',   runDistillation],
+    // Ingestion canary — twice daily is enough to catch a dead pipe within a
+    // day instead of the 87 days it went unnoticed in 2026.
+    ['ingest-canary',    '0 9,17 * * *', runIngestCanary],
   ];
   for (const [name, pattern, fn] of jobs) {
     cron.schedule(
@@ -61,5 +65,5 @@ export function registerCrons(): void {
     );
   }
 
-  console.log('[cron] registered: daily-digest @8, urgent-nag @10/14/18, morning @9, nudge @20, weekly Sun@18 (America/Toronto)');
+  console.log('[cron] registered: daily-digest @8, urgent-nag @10/14/18, morning @9, nudge @20, weekly Sun@18, distillation Sun@21, ingest-canary @9/17 (America/Toronto)');
 }

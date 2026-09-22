@@ -92,6 +92,16 @@ export interface FamilyProposal {
   created_at: string;
 }
 
+export interface GmailAccountStatus {
+  label: string;
+  address: string;
+  active: boolean;
+  connected: boolean;
+  managed_by: string | null;
+  error: string | null;
+  last_synced_at: string | null;
+}
+
 export interface ReviewCard {
   decision_id: string;
   decision: { classification: string; urgency_score?: number; [k: string]: unknown };

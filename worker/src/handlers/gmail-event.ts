@@ -300,30 +300,70 @@ async function insertUrgentQueue(userId: string, triageId: string, summary: stri
 
 // ---------- Handler ----------------------------------------------------------
 
+export type GmailAccountLabel = GmailEvent['gmail_account_label'];
+export type GmailMessageInput = GmailEvent['message'];
+
+export interface ProcessResult {
+  status:           'triaged' | 'already_triaged';
+  gmail_message_id: string;
+  triage_id?:       string;
+  decision_id?:     string;
+  classification?:  string;
+  urgency_score?:   number;
+  is_urgent?:       boolean;
+}
+
+/**
+ * Legacy n8n entry point (ADR 0005: being retired). Validates the forwarded
+ * message and runs the shared pipeline with the body allowed, as before.
+ */
 export async function gmailEventHandler(req: Request, res: Response): Promise<void> {
   const parsed = GmailEventSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'invalid_request', details: parsed.error.flatten() });
     return;
   }
-
   const { gmail_account_label, message } = parsed.data;
+  try {
+    const result = await processGmailMessage(gmail_account_label, message, { bodyAllowed: true });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof GmailAccountNotFound) {
+      res.status(404).json({ error: 'gmail_account_not_found', label: gmail_account_label });
+      return;
+    }
+    throw err;
+  }
+}
+
+export class GmailAccountNotFound extends Error {}
+
+/**
+ * The triage pipeline for one Gmail message — shared by the (legacy) n8n
+ * webhook and the worker-native gmail-sync cron.
+ *
+ * `bodyAllowed=false` sends headers + snippet only to Claude (business2 —
+ * borrower PII rule, ADR 0005).
+ */
+export async function processGmailMessage(
+  gmail_account_label: GmailAccountLabel,
+  message: GmailMessageInput,
+  opts: { bodyAllowed: boolean },
+): Promise<ProcessResult> {
   const userId = config.USER_ID;
 
   // Idempotency check
   if (await alreadyTriaged(userId, message.id)) {
-    res.status(200).json({ status: 'already_triaged', gmail_message_id: message.id });
-    return;
+    return { status: 'already_triaged', gmail_message_id: message.id };
   }
 
   const account = await getGmailAccountByLabel(userId, gmail_account_label);
-  if (!account) {
-    res.status(404).json({ error: 'gmail_account_not_found', label: gmail_account_label });
-    return;
-  }
+  if (!account) throw new GmailAccountNotFound(gmail_account_label);
 
   const headers = parseHeaders(message);
-  const body    = extractBody(message).slice(0, 4000); // keep token cost bounded
+  const body    = opts.bodyAllowed
+    ? extractBody(message).slice(0, 4000)            // keep token cost bounded
+    : (message.snippet ?? '').slice(0, 300);        // PII-guarded account: snippet only
 
   // Level 1: hard rules (learned or hand-written) run before Claude.
   const rules = await loadTriageRules(userId);
@@ -437,7 +477,7 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
     });
   }
 
-  res.status(200).json({
+  return {
     status:           'triaged',
     triage_id:        triageId,
     decision_id:      decisionId,
@@ -445,5 +485,5 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
     urgency_score:    classification.urgency_score,
     is_urgent:        isUrgent,
     gmail_message_id: message.id,
-  });
+  };
 }

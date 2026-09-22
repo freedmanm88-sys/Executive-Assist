@@ -12,6 +12,7 @@ import { runUrgentNag } from './urgent-nag.js';
 import { runMorningReminder, runHabitNudge, runWeeklySummary, runReviewDigest } from './family-crons.js';
 import { runDistillation } from './distillation.js';
 import { runIngestCanary } from './ingest-canary.js';
+import { runGmailSync } from './gmail-sync.js';
 
 export function registerCrons(): void {
   // Daily digest at 8:00 AM Toronto, every day
@@ -52,6 +53,9 @@ export function registerCrons(): void {
     ['ingest-canary',    '0 9,17 * * *', runIngestCanary],
     // Review digest — batched "N emails to review" push (spec v2 §4). Morning
     // fires on ≥1 card; afternoon only on ≥3 so it never nags over one email.
+    // Gmail ingestion — worker-native polling (ADR 0005). Overlap + unique
+    // index make missed/duplicate runs harmless.
+    ['gmail-sync',       '*/2 * * * *',  runGmailSync],
     ['review-digest-am', '5 9 * * *',    () => runReviewDigest()],
     ['review-digest-pm', '0 17 * * *',   () => runReviewDigest({ minCards: 3 })],
   ];

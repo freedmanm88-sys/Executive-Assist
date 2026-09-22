@@ -169,6 +169,18 @@ export async function resolveProposal(
   revalidatePath('/calendar');
 }
 
+// ---------- Gmail accounts (worker-native OAuth, ADR 0005) -------------------
+
+export async function getGmailConnectUrl(label: string): Promise<string> {
+  const s = await requireSession();
+  const { url } = await workerFetch<{ url: string }>('/family/gmail/connect-url', {
+    method: 'POST',
+    userId: s.uid,
+    body: { label },
+  });
+  return url;
+}
+
 // ---------- Review cards (instant-learning feedback) -------------------------
 
 export type ReviewAction =

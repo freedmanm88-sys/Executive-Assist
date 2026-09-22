@@ -10,6 +10,9 @@ import { requireInternalAuth } from './auth.js';
 import { gmailEventHandler } from './handlers/gmail-event.js';
 import { telegramCallbackHandler, telegramFeedbackReplyHandler } from './handlers/feedback-event.js';
 import { familyRouter, runMigrations } from './handlers/family-api.js';
+import { googleOauthCallback, setGoogleClientHandler } from './handlers/oauth.js';
+import { telegramWebhookHandler, registerTelegramWebhook } from './handlers/telegram-webhook.js';
+import { runGmailSync } from './crons/gmail-sync.js';
 import { pool } from './db.js';
 import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
@@ -31,6 +34,12 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({ ok: true, service: 'executive-assist-worker', uptime_s: Math.round(process.uptime()) });
 });
 
+// Google OAuth redirect target — public by nature; state is HMAC-signed.
+app.get('/oauth/google/callback', asyncHandler(googleOauthCallback));
+
+// Telegram Bot API webhook — verified by secret header inside the handler.
+app.post('/events/telegram', asyncHandler(telegramWebhookHandler));
+
 // ---------- Authenticated routes ---------------------------------------------
 
 app.post('/events/gmail',                  requireInternalAuth, asyncHandler(gmailEventHandler));
@@ -43,6 +52,17 @@ app.use('/family', requireInternalAuth, familyRouter);
 
 // Idempotent migration runner — applies all embedded migrations in order.
 app.post('/admin/migrate', requireInternalAuth, asyncHandler(runMigrations));
+
+// One-time setup for worker-native integrations (ADR 0005).
+app.post('/admin/google-client', requireInternalAuth, asyncHandler(setGoogleClientHandler));
+app.post('/admin/telegram-webhook', requireInternalAuth, asyncHandler(async (_req, res) => {
+  if (!config.publicUrl) { res.status(400).json({ error: 'no_public_url', hint: 'set WORKER_PUBLIC_URL' }); return; }
+  res.status(200).json(await registerTelegramWebhook(config.publicUrl));
+}));
+
+app.post('/cron/gmail-sync', requireInternalAuth, asyncHandler(async (_req, res) => {
+  res.status(200).json(await runGmailSync());
+}));
 
 // Manual cron trigger — useful for testing without waiting for 8 AM.
 // Same auth as /events/* so n8n could trigger it on demand if needed.

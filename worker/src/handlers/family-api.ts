@@ -31,6 +31,7 @@ import { getVapidKeys, sendPushToUser } from '../push.js';
 import { setPin, verifyPin } from '../pin.js';
 import { runAssistant } from './family-assistant.js';
 import { reviewRouter } from './family-review.js';
+import { listAccountStatus, buildAuthUrl, GmailAuthError } from '../gmail/oauth.js';
 
 // ---------- Family member validation (cached) --------------------------------
 
@@ -686,6 +687,31 @@ familyRouter.post('/proposals/:id/resolve', asyncMw(async (req, res) => {
 
   if (!result) { res.status(404).json({ error: 'proposal_not_found_or_resolved' }); return; }
   res.json({ resolved: true, ...result });
+}));
+
+// --- Gmail accounts (worker-native OAuth, ADR 0005) --------------------------
+
+familyRouter.get('/gmail/accounts', asyncMw(async (_req, res) => {
+  const accounts = await listAccountStatus(familyUserId(res));
+  res.json({ accounts });
+}));
+
+familyRouter.post('/gmail/connect-url', asyncMw(async (req, res) => {
+  const { label } = z.object({ label: z.enum(['personal', 'business1', 'business2']) }).parse(req.body);
+  const uid = familyUserId(res);
+  const accounts = await listAccountStatus(uid);
+  const acct = accounts.find((a) => a.label === label);
+  if (!acct) { res.status(404).json({ error: 'gmail_account_not_found' }); return; }
+  try {
+    const url = await buildAuthUrl(uid, label, acct.address);
+    res.json({ url });
+  } catch (err) {
+    if (err instanceof GmailAuthError && err.code === 'client_not_configured') {
+      res.status(503).json({ error: 'google_client_not_configured' });
+      return;
+    }
+    throw err;
+  }
 }));
 
 // --- PIN management ----------------------------------------------------------

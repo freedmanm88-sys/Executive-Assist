@@ -46,12 +46,15 @@ email arrives → rules absorb noise (no Claude call) → Claude classifies + ex
 
 ## 5. Acceptance criteria
 
-### Phase 0 — Revive the pipe (prerequisite; needs Mark)
-1. Canary branch (`fix/ingestion-staleness-canary`) merged and deployed; first run sends the "ingestion looks dead" alert (expected).
-2. Gmail OAuth re-authorized for all 3 accounts in n8n; `03a/b/c` workflows Active.
-3. Google Cloud OAuth app moved **Testing → In production** so refresh tokens stop expiring every 7 days.
-4. Canary sends the ✅ recovery ping; `MAX(processed_at)` in `email_triage_log` is < 1 h old.
-5. Mark's phone has the app installed with push enabled; `POST /family/push/test` returns `sent ≥ 1`.
+### Phase 0 — Revive the pipe (prerequisite; needs Mark) — **n8n retired, see ADR 0005**
+1. ✅ Canary merged and deployed; first run sent the "ingestion looks dead" alert (2026-09-22).
+2. ✅ Worker-native Gmail sync + OAuth connect flow + Telegram webhook deployed (replaces n8n W1/W2/W3/W99).
+3. **Mark — Google Cloud Console → APIs & Services → Credentials → the OAuth client `1053321758874-…`:** add authorized redirect URI `https://worker-production-5e83.up.railway.app/oauth/google/callback`.
+4. **Mark — OAuth consent screen → Publish app (Testing → In production)** so refresh tokens stop expiring every 7 days (the May root cause).
+5. **Mark — app → Settings → Email accounts → Connect** ×3 (personal, Sophax, Stonefield). Each shows "Synced …" within 2 min.
+6. Canary sends the ✅ recovery ping; `MAX(processed_at)` in `email_triage_log` is < 1 h old.
+7. Mark's phone has the app installed with push enabled; `POST /family/push/test` returns `sent ≥ 1`.
+8. n8n Railway service stopped (after 6 is green for a day).
 
 ### Phase 1 — Review cards + instant learning
 6. `GET /family/review` returns pending cards (actionable classes + anything urgent), newest first, with subject, sender, snippet, classification, reasoning, and — when present — extracted proposal and draft.
@@ -98,7 +101,7 @@ email arrives → rules absorb noise (no Claude call) → Claude classifies + ex
 - **Stack unchanged:** worker (Express/TS on Railway) + family-app (Next 16 on Vercel) + Postgres. New tables via embedded migrations 11+ (`/admin/migrate`).
 - **Rules before Claude** already exists (`triage-rules.ts`); Phase 1 just makes rule creation instant and user-driven. Expect Claude call volume to drop >60% within two weeks of use.
 - **Push batching** lives in a new cron (`review-digest`) and replaces the per-email urgent push only for non-urgent classes.
-- **Gmail write** stays in n8n (credentialed boundary per the architecture doc: "nothing the agent can do that bypasses n8n's credentialed workflows").
+- **Gmail read/write is worker-native** (ADR 0005 replaced the n8n credential boundary): `gmail/api.ts` already has `createDraft`, `getAttachment`, `findPdfAttachments` — Phases 3 and 4 need no new plumbing and no n8n toggles.
 - **Compliance (global CLAUDE.md):** no raw PII to Claude — attachment processing gated to personal inbox; business classification continues on subject/snippet only as today. Railway has **no Canadian region**; the worker currently processes Mark's personal email in `us-west2`/`us-east4`. Acceptable for personal data by Mark's choice; flagged here so it's a decision, not an accident. Borrower data must not enter this pipeline.
 - **iOS push actions:** not supported by Safari web push; card-on-tap is the design. Revisit native shell only if the one-tap flow proves insufficient.
 - **Effort (rough):** P0 = 30 min of Mark + 1 h; P1 = 2 sessions; P2 = 1 session; P3 = 1–2 sessions (needs one n8n workflow); P4 = 1–2 sessions (needs n8n trigger setting); P5 = 1 session.

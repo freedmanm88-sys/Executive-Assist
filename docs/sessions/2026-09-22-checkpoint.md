@@ -27,8 +27,15 @@ Adopt: activity/audit feed, memory store, follow-ups/open loops, bounded backgro
 - worker `tsc` ✅, `npm test` 11/11 ✅; family-app `next build` ✅ (`/review` route present).
 - Live: canary ✅. Phase 1 endpoints + Vercel deploy: see background chain result (recorded in final chat message).
 
+## Part 2 — n8n retired (Mark: "not reliable")
+- ADR 0005. Worker now owns: Gmail OAuth (`gmail/oauth.ts`, tokens AES-GCM in `user_credentials`, key HKDF from INTERNAL_AUTH_TOKEN or `CREDENTIALS_KEY`), Gmail REST (`gmail/api.ts`), `crons/gmail-sync.ts` every 2 min (business2 body never sent to Claude), Telegram webhook (`handlers/telegram-webhook.ts`: buttons → feedback handlers, text → quick-add assistant), OAuth callback `GET /oauth/google/callback`, admin `POST /admin/google-client` + `/admin/telegram-webhook`, manual `POST /cron/gmail-sync`.
+- `gmail-event.ts` refactored: `processGmailMessage(label, message, {bodyAllowed})`; `/events/gmail` kept as legacy shim.
+- App: Settings → **Email accounts** (Connect/Reconnect per inbox, sync time, error). OAuth bounce-back notice via `?gmail=connected|error`.
+- Google OAuth client seeded into `family_settings.google_oauth_client` (server-only) from `.env.local.txt` values — same Google Cloud client n8n used.
+- Verification of the live chain: see final chat message / `bbjuelkzk` output.
+
 ## Next (in order)
-1. **Mark — Phase 0:** n8n → re-auth Gmail OAuth (3 accounts), confirm 03a/b/c Active; Google Cloud → publish OAuth app (Testing → In production). Canary will send the ✅ recovery ping.
+1. **Mark — Phase 0 (no n8n):** Google Cloud Console → OAuth client → add redirect URI `https://worker-production-5e83.up.railway.app/oauth/google/callback`; consent screen → **Publish app**; then app Settings → Email accounts → Connect ×3. Canary sends ✅ recovery ping once mail flows. Then stop the n8n Railway service.
 2. **Mark:** install app on phone, enable push, `POST /family/push/test` → sent ≥1. Then actually use `/review` for a few days.
 3. Claude — Phase 5 Activity tab (cheap; also gives Undo for rules). Then Phase 2 memory store → Phase 3 drafts (needs one n8n create-draft workflow) → Phase 4 attachments (n8n "download attachments" toggle; personal inbox only — borrower PII rule).
 4. Consider a public-mail-domain denylist for `mute_domain` (ADR 0004 consequence).

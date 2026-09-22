@@ -30,6 +30,7 @@ import { MIGRATION_10_SQL, MIGRATION_10_NAME } from '../migrations/10-family-pro
 import { getVapidKeys, sendPushToUser } from '../push.js';
 import { setPin, verifyPin } from '../pin.js';
 import { runAssistant } from './family-assistant.js';
+import { reviewRouter } from './family-review.js';
 
 // ---------- Family member validation (cached) --------------------------------
 
@@ -152,6 +153,9 @@ familyRouter.get('/users', asyncMw(async (_req, res) => {
 }));
 
 familyRouter.use(asyncMw(requireFamilyUser));
+
+// Review cards — the instant-learning feedback surface (handlers/family-review.ts)
+familyRouter.use('/review', reviewRouter);
 
 // --- Bootstrap ---------------------------------------------------------------
 

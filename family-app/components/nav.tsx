@@ -9,7 +9,7 @@ const TABS = [
   { href: '/lists', label: 'Lists', icon: ListIcon },
   { href: '/habits', label: 'Habits', icon: FlameIcon },
   { href: '/calendar', label: 'Calendar', icon: CalendarIcon },
-  { href: '/inbox', label: 'Inbox', icon: InboxIcon },
+  { href: '/review', label: 'Review', icon: InboxIcon },
 ] as const;
 
 export function BottomNav({ pendingCount }: { pendingCount: number }) {
@@ -28,7 +28,7 @@ export function BottomNav({ pendingCount }: { pendingCount: number }) {
             >
               <t.icon className="h-6 w-6" />
               {t.label}
-              {t.href === '/inbox' && pendingCount > 0 && (
+              {t.href === '/review' && pendingCount > 0 && (
                 <span className="absolute top-1 right-[22%] min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center">
                   {pendingCount > 99 ? '99+' : pendingCount}
                 </span>

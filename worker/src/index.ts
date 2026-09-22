@@ -14,7 +14,7 @@ import { pool } from './db.js';
 import { registerCrons } from './crons/index.js';
 import { runDailyDigest } from './crons/daily-digest.js';
 import { runUrgentNag } from './crons/urgent-nag.js';
-import { runMorningReminder, runHabitNudge, runWeeklySummary } from './crons/family-crons.js';
+import { runMorningReminder, runHabitNudge, runWeeklySummary, runReviewDigest } from './crons/family-crons.js';
 import { runDistillation } from './crons/distillation.js';
 import { runIngestCanary } from './crons/ingest-canary.js';
 
@@ -67,6 +67,9 @@ app.post('/cron/weekly-summary', requireInternalAuth, asyncHandler(async (_req, 
 }));
 app.post('/cron/distillation', requireInternalAuth, asyncHandler(async (_req, res) => {
   res.status(200).json(await runDistillation());
+}));
+app.post('/cron/review-digest', requireInternalAuth, asyncHandler(async (_req, res) => {
+  res.status(200).json(await runReviewDigest());
 }));
 app.post('/cron/ingest-canary', requireInternalAuth, asyncHandler(async (_req, res) => {
   res.status(200).json(await runIngestCanary());

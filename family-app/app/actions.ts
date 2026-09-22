@@ -169,6 +169,38 @@ export async function resolveProposal(
   revalidatePath('/calendar');
 }
 
+// ---------- Review cards (instant-learning feedback) -------------------------
+
+export type ReviewAction =
+  | 'fine' | 'not_urgent' | 'mute_sender' | 'mute_domain' | 'vip_sender'
+  | 'make_task' | 'add_event' | 'draft_reply' | 'dismiss';
+
+export interface ActResult {
+  status: 'done' | 'not_available';
+  effects: string[];
+  also_resolved: number;
+}
+
+export async function actOnReview(
+  decisionId: string,
+  action: ReviewAction,
+  note?: string,
+  assignedTo?: string | null,
+): Promise<ActResult> {
+  const s = await requireSession();
+  const result = await workerFetch<ActResult>(`/family/review/${decisionId}/act`, {
+    method: 'POST',
+    userId: s.uid,
+    body: { action, ...(note ? { note } : {}), assigned_to: assignedTo ?? null },
+  });
+  revalidatePath('/review');
+  revalidatePath('/inbox');
+  revalidatePath('/tasks');
+  revalidatePath('/calendar');
+  revalidatePath('/');
+  return result;
+}
+
 // ---------- Triage feedback --------------------------------------------------
 
 export interface FeedbackResult {

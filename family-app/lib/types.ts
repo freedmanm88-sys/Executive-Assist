@@ -92,6 +92,27 @@ export interface FamilyProposal {
   created_at: string;
 }
 
+export interface ReviewCard {
+  decision_id: string;
+  decision: { classification: string; urgency_score?: number; [k: string]: unknown };
+  reasoning: string | null;
+  created_at: string;
+  triage_log_id: string;
+  subject: string | null;
+  sender_email: string | null;
+  sender_name: string | null;
+  received_at: string;
+  classification: string;
+  account_label: string | null;
+  sender_relationship: string | null;
+  proposal: {
+    id: string;
+    kind: 'task' | 'event';
+    payload: Record<string, unknown>;
+    status: string;
+  } | null;
+}
+
 export interface FeedItem {
   decision_id: string;
   decision: { classification: string; urgency_score?: number; [k: string]: unknown };

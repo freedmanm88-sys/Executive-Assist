@@ -9,7 +9,7 @@
 import cron from 'node-cron';
 import { runDailyDigest } from './daily-digest.js';
 import { runUrgentNag } from './urgent-nag.js';
-import { runMorningReminder, runHabitNudge, runWeeklySummary } from './family-crons.js';
+import { runMorningReminder, runHabitNudge, runWeeklySummary, runReviewDigest } from './family-crons.js';
 import { runDistillation } from './distillation.js';
 import { runIngestCanary } from './ingest-canary.js';
 
@@ -50,6 +50,10 @@ export function registerCrons(): void {
     // Ingestion canary — twice daily is enough to catch a dead pipe within a
     // day instead of the 87 days it went unnoticed in 2026.
     ['ingest-canary',    '0 9,17 * * *', runIngestCanary],
+    // Review digest — batched "N emails to review" push (spec v2 §4). Morning
+    // fires on ≥1 card; afternoon only on ≥3 so it never nags over one email.
+    ['review-digest-am', '5 9 * * *',    () => runReviewDigest()],
+    ['review-digest-pm', '0 17 * * *',   () => runReviewDigest({ minCards: 3 })],
   ];
   for (const [name, pattern, fn] of jobs) {
     cron.schedule(

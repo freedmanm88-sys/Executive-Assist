@@ -64,7 +64,7 @@ export default async function HomePage() {
       <div className="grid grid-cols-3 gap-2">
         <StatCard href="/tasks" label="Tasks open" value={tasks.length} alert={dueTasks.length > 0} />
         <StatCard href="/lists" label="List items" value={groceryOutstanding} />
-        <StatCard href="/inbox" label="To review" value={feed.length} alert={feed.length > 0} />
+        <StatCard href="/review" label="To review" value={feed.length} alert={feed.length > 0} />
       </div>
 
       <QuickAdd />

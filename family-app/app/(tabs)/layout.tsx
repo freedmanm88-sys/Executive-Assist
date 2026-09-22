@@ -9,11 +9,11 @@ export default async function TabsLayout({ children }: { children: React.ReactNo
   // Pending-feedback badge for the inbox tab. Non-fatal if the worker is briefly down.
   let pendingCount = 0;
   try {
-    const { feed } = await workerFetch<{ feed: unknown[] }>(
-      '/family/feed?pending=1&actionable=1&limit=100',
+    const { pending } = await workerFetch<{ pending: number }>(
+      '/family/review/count',
       { userId: session.uid },
     );
-    pendingCount = feed.length;
+    pendingCount = pending;
   } catch {
     /* badge is best-effort */
   }

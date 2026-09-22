@@ -12,6 +12,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { pool, withUserContext } from '../db.js';
 import { sendPushToUser } from '../push.js';
 import { anthropic, DEFAULT_MODEL } from '../claude.js';
+import { countPending } from '../handlers/family-review.js';
 
 interface Member { id: string; name: string }
 
@@ -59,6 +60,42 @@ export async function runMorningReminder(): Promise<{ notified: number }> {
   }
   console.log(`[cron:morning-reminder] notified=${notified}`);
   return { notified };
+}
+
+// ---------- Review digest (batched, non-urgent cards) ------------------------
+
+/**
+ * "6 emails to review" — the batched push for everything that isn't urgent.
+ * Spec §4: at most 09:00 and 17:00; skip when nothing is pending; the 17:00
+ * run only fires if ≥3 cards. Urgent cards still push immediately on arrival.
+ */
+export async function runReviewDigest(opts: { minCards?: number } = {}): Promise<{ pending: number; pushed: boolean }> {
+  const members = await getMembers();
+  const min = opts.minCards ?? 1;
+  let pushed = false;
+  for (const m of members) {
+    const pending = await countPending(m.id);
+    if (pending < min) continue;
+    const top = await withUserContext(m.id, async (client) => {
+      const { rows } = await client.query<{ subject: string | null }>(
+        `SELECT etl.subject FROM ai_decisions d
+         JOIN email_triage_log etl ON etl.decision_id = d.id
+         WHERE d.domain = 'email_triage' AND d.feedback IS NULL
+           AND etl.classification IN ('urgent','action','reply_needed','calendar')
+         ORDER BY d.created_at DESC LIMIT 3`,
+      );
+      return rows.map((r) => r.subject ?? '(no subject)');
+    });
+    const sent = await sendPushToUser(m.id, {
+      title: `${pending} email${pending === 1 ? '' : 's'} to review`,
+      body: top.join(' · '),
+      url: '/review',
+      tag: 'review-digest',
+    });
+    if (sent > 0) pushed = true;
+  }
+  console.log(`[cron:review-digest] pushed=${pushed}`);
+  return { pending: 0, pushed };
 }
 
 // ---------- Evening habit nudge ----------------------------------------------

@@ -432,7 +432,7 @@ export async function gmailEventHandler(req: Request, res: Response): Promise<vo
     await sendPushToUser(userId, {
       title: `🚨 Urgent: ${headers.subject}`,
       body:  `${senderDisplay} — ${classification.reasoning}`,
-      url:   '/inbox',
+      url:   '/review',
       tag:   `urgent-${triageId}`,
     });
   }

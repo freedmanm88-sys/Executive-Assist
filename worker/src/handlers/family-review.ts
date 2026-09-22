@@ -105,6 +105,16 @@ reviewRouter.post('/:decisionId/act', asyncMw(async (req, res) => {
   const ctx = await loadDecisionContext(userId, decisionId);
   if (!ctx) { res.status(404).json({ error: 'decision_not_found' }); return; }
 
+  // A card can be acted on once. Prevents a double-tap (or a stale screen)
+  // from overwriting the feedback and re-running side effects.
+  const alreadyResolved = await withUserContext(userId, async (client) => {
+    const { rows } = await client.query<{ feedback: string | null }>(
+      `SELECT feedback FROM ai_decisions WHERE id = $1::uuid`, [decisionId],
+    );
+    return rows[0]?.feedback != null;
+  });
+  if (alreadyResolved) { res.status(409).json({ error: 'already_resolved' }); return; }
+
   const result = await withUserContext(userId, (client) =>
     applyAction(client, userId, decisionId, ctx, body),
   );
@@ -153,6 +163,48 @@ reviewRouter.post('/:decisionId/act', asyncMw(async (req, res) => {
   );
 
   res.json(result);
+}));
+
+// ---------- What it has learned (+ Undo) -------------------------------------
+
+/** Active rules + preferences — the backbone of the Activity tab's Undo. */
+reviewRouter.get('/learning', asyncMw(async (_req, res) => {
+  const data = await withUserContext(uid(res), async (client) => {
+    const rules = await client.query(
+      `SELECT id, pattern_type, pattern_value, action, created_at
+       FROM triage_rules WHERE active AND domain = 'email_triage' ORDER BY created_at DESC LIMIT 200`,
+    );
+    const prefs = await client.query(
+      `SELECT id, domain, preference, confidence, last_reinforced
+       FROM learned_preferences WHERE active ORDER BY last_reinforced DESC LIMIT 200`,
+    );
+    return { rules: rules.rows, preferences: prefs.rows };
+  });
+  res.json(data);
+}));
+
+const UndoSchema = z.object({
+  kind: z.enum(['rule', 'preference']),
+  id:   z.string().uuid(),
+});
+
+/** Deactivate (never delete) a learned rule or preference. */
+reviewRouter.post('/learning/undo', asyncMw(async (req, res) => {
+  const { kind, id } = UndoSchema.parse(req.body);
+  const userId = uid(res);
+  const table = kind === 'rule' ? 'triage_rules' : 'learned_preferences';
+  const r = await withUserContext(userId, (client) =>
+    client.query(`UPDATE ${table} SET active = FALSE WHERE id = $1::uuid AND active`, [id]),
+  );
+  if ((r.rowCount ?? 0) === 0) { res.status(404).json({ error: 'not_found_or_inactive' }); return; }
+  await withUserContext(userId, (client) =>
+    client.query(
+      `INSERT INTO agent_actions (user_id, tool_name, input, output, success)
+       VALUES ($1::uuid, 'review:undo', $2, '{"deactivated":true}', TRUE)`,
+      [userId, JSON.stringify({ kind, id })],
+    ),
+  );
+  res.json({ deactivated: true });
 }));
 
 // ---------- Action semantics -------------------------------------------------
